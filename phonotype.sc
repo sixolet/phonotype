@@ -57,6 +57,10 @@ PTNode {
 	instantiate {
 		^op.instantiate(args);
 	}
+
+	printOn { | stream |
+        stream << "PTNode( " << this.op << ", " << this.args << " )";
+    }
 }
 
 
@@ -155,6 +159,40 @@ PTTimesOp : PTOp {
 	}
 }
 
+PTItOp : PTOp {
+	var prevLine;
+
+	*new { |prevLine| // A PTNode
+		^super.newCopyArgs("IT", 0, prevLine);
+	}
+
+	rate { |args|
+		^prevLine.rate;
+	}
+
+	min { |args|
+		^prevLine.min;
+	}
+
+	max { |args|
+		^prevLine.max;
+	}
+
+	instantiate { |args|
+		"it rate is % prevLine is %\n".postf(this.rate, prevLine);
+		^case
+		{this.rate == \audio} {
+			\in.ar(0)
+		}
+		{this.rate == \control} {
+			\in.kr(0)
+		}
+		{true} {
+			Error.new("Unknown rate for IT.").throw;
+		}
+	}
+}
+
 PTParser {
 	var <ops, constOp;
 
@@ -170,25 +208,31 @@ PTParser {
 		]));
 	}
 
-	parse { |s|
+	parse { |s, it = nil|
 		var tokens = s.split($ );
-		var a = this.parseHelper(tokens, 0);
+		var itt = (if (it == nil) { PTNode.new(constOp, [0])} { it });
+		var a = this.parseHelper(tokens, 0, itt);
 		^a.value;
 	}
 
-	parseHelper {|tokens, pos|
+	parseHelper {|tokens, pos, it|
+		"parseHelper % % %\n".postf(tokens, pos, it);
 		^case
+		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
 			"const % at pos %\n".postf(tokens[pos], pos+1);
 			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()])
 		}
-		{pos + 1 >= tokens.size} { Error.new("Expected token; got EOF").throw }
+		{tokens[pos] == "IT"} {
+			pos+1 -> PTNode.new(PTItOp.new(prevLine: it), [])
+		}
+
 		{ops.includesKey(tokens[pos])} {
 			var op = ops[tokens[pos]];
 			var p = pos + 1;
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
-				var a = this.parseHelper(tokens, p);
+				var a = this.parseHelper(tokens, p, it);
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
@@ -202,36 +246,28 @@ PTParser {
 	}
 }
 
-PTScriptRef {
-	var <script, args, <proxies,
-	*new { |script, args|
-		^super.newCopyArgs(script, args, Array.new(script.size)).init();
-	}
+/*
+Rules for scripts and busses and stuff (at least for now):
+* you can only refer to smaller-numbered scripts from larger-numbered scripts.
+* Maybe script calls have intrinsic rates, to make things simpler? That way at worst you have to change "the rest of one script"
+* Busses have intrinsic rate.
+*/
 
-	add { |line|
-	}
 
-	insert { |index, line|
-	}
-
-	replace { |index, line|
-	}
-
-	delete { |index|
-	}
-
-	setFadeTime { |index, time|
-	}
-}
-
-PTScript {
+PTScript : PTOp {
 	var <size, lines, refs;
 	*new { |size|
 		^super.newCopyArgs(size, Array.new(size), Array.new(0));
 	}
 
 	add { |line|
+		if (lines.size >= size, {
+			Error.new("Can't add another line").throw
+		}, {});
 		lines = lines.add(line);
+		refs.do { |r|
+			r.add(line);
+		};
 	}
 
 	insert { |index, line|
