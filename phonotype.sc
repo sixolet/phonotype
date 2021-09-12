@@ -270,6 +270,12 @@ PTScriptNet {
 		});
 	}
 
+	printOn { | stream |
+        stream << "PTScriptNet(\n";
+		lines.do { |l| stream << l << "\n" };
+		stream << ")";
+    }
+
 	makeOut { |rate|
 		case { rate == \audio } {
 			out.source = { \in.ar() };
@@ -313,7 +319,26 @@ PTScriptNet {
 		^oldOut;
 	}
 
-	replaceInternal { |line, index|
+	insertPassthrough { |index|
+		var prevProxy = proxies[index-1] ? in;
+		var nextProxy = proxies[index] ? out;
+		var prevNode = nodes[index-1] ? inNode;
+		var line = "IT";
+		var node = parser.parse(line, it: prevNode);
+		var proxy = NodeProxy.new;
+		proxy.source = { node.instantiate };
+		prevProxy <>> proxy <>> nextProxy;
+		lines.insert(index, line);
+		nodes.insert(index, node);
+		proxies.insert(index, proxy);
+	}
+
+	insert { |index, line|
+		this.insertPassthrough(index);
+		^this.replace(index, line);
+	}
+
+	replaceInternal { |index, line|
 		var node = parser.parse(line, it: nodes[index-1] ? inNode);
 		var proxy = proxies[index];
 		var prevControl = proxies[index-1] ? in;
@@ -322,12 +347,40 @@ PTScriptNet {
 		if ( proxy.rate != node.rate, {
 			oldProxy = proxy;
 			proxy = NodeProxy.new;
-
+			proxy.fadeTime = oldProxy.fadeTime;
+			nextProxy.xset(\in, proxy);
+			proxy.set(\in, prevControl);
+			SystemClock.sched(nextProxy.fadeTime, {oldProxy.end()});
 		});
 		proxy.source = { node.instantiate };
-		proxy.set(\in, prevControl);
-		proxy <>> nextProxy;
 		proxies[index] = proxy;
+		lines[index] = line;
+		nodes[index] = node;
+		^ oldProxy == nil;
+	}
+
+	replace { |index, line|
+		var l = line;
+		var i = index;
+		var done = false;
+		var oldOut = nil;
+		while({ (i < lines.size) && (done.not) }, {
+			done = this.replaceInternal(i, l);
+			i = i + 1;
+			l = lines[i];
+		});
+
+		if ( done.not, {
+			oldOut = out;
+			out = NodeProxy.new;
+			this.makeOut(nodes.last.rate);
+			proxies.last <>> out;
+		});
+		^oldOut;
+	}
+
+	setFadeTime { |index, time|
+		proxies[index].fadeTime = time;
 	}
 
 }
