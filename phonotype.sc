@@ -338,6 +338,25 @@ PTScriptNet {
 		^this.replace(index, line);
 	}
 
+	removeAt { |index|
+		var prevProxy = proxies[index-1] ? in;
+		var nextProxy = proxies[index+1] ? out;
+		var proxy = proxies[index];
+		var prevNode = nodes[index-1] ? inNode;
+		var oldOut = nil;
+		nextProxy.xset(\in, prevProxy);
+		lines.removeAt(index);
+		proxies.removeAt(index);
+		nodes.removeAt(index);
+		if ( proxy.rate != prevProxy.rate, {
+			// Replace the line that moved up with itself, to propagate the new
+			// signal rate.
+			oldOut = replace(index, lines[index]);
+		});
+		SystemClock.sched(nextProxy.fadeTime, {proxy.end()});
+		^oldOut;
+	}
+
 	replaceInternal { |index, line|
 		var node = parser.parse(line, it: nodes[index-1] ? inNode);
 		var proxy = proxies[index];
