@@ -253,9 +253,88 @@ Rules for scripts and busses and stuff (at least for now):
 * Busses have intrinsic rate.
 */
 
+PTScriptNet {
+	var parser, <lines, <nodes, <proxies, <out, <in, <inNode;
+
+	*new { |parser, size, lines, inNode=nil|
+		var i = NodeProxy.new;
+		i.source = { inNode.instantiate };
+		^super.newCopyArgs(parser, Array.new(size), Array.new(size), Array.new(size), NodeProxy.new, i, inNode).init(lines);
+	}
+
+	init { |l|
+		l.do { |x| this.add(x) };
+		if (lines.size == 0, {
+			this.makeOut(in.rate);
+			out.set(\in, in);
+		});
+	}
+
+	makeOut { |rate|
+		case { rate == \audio } {
+			out.source = { \in.ar() };
+		}
+		{ rate == \control } {
+			out.source = { \in.kr() };
+		}
+		{ true } {
+			Error.new("Unknown output rate for script").throw;
+		};
+	}
+
+	/**
+	* Adds a line to the script net.
+	* Returns nil if the same script output node will continue to work; the old node if not.
+	* This is the case if the script changes its output rate. In the case this method returns non-nil,
+	* the calling line should be re-interpereted and the new output should be monitored; the old output should
+	* be ended after the crossfade time.
+	*/
+	add { |line|
+		var node = parser.parse(line, it: nodes.last ? inNode);
+		var proxy = NodeProxy.new;
+		var oldOut = nil;
+		proxy.source = { node.instantiate };
+		if ( out.rate != node.rate, {
+			oldOut = out;
+			out = NodeProxy.new;
+		});
+		if ( out.source == nil, {
+			this.makeOut(node.rate);
+		}, {});
+		if( (proxies.size > 0), {
+			proxies.last <>> proxy <>> out;
+		}, {
+			proxy.set(\in, in);
+			proxy <>> out;
+		});
+		lines.add(line);
+		nodes.add(node);
+		proxies.add(proxy);
+		^oldOut;
+	}
+
+	replaceInternal { |line, index|
+		var node = parser.parse(line, it: nodes[index-1] ? inNode);
+		var proxy = proxies[index];
+		var prevControl = proxies[index-1] ? in;
+		var nextProxy = proxies[index+1] ? out;
+		var oldProxy = nil;
+		if ( proxy.rate != node.rate, {
+			oldProxy = proxy;
+			proxy = NodeProxy.new;
+
+		});
+		proxy.source = { node.instantiate };
+		proxy.set(\in, prevControl);
+		proxy <>> nextProxy;
+		proxies[index] = proxy;
+	}
+
+}
+
 
 PTScript : PTOp {
-	var <size, lines, refs;
+	var <size, <lines, refs;
 	*new { |size|
 		^super.newCopyArgs(size, Array.new(size), Array.new(0));
 	}
