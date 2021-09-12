@@ -87,7 +87,7 @@ PTConst : PTOp {
 	}
 }
 
-PTBasicOpAR : PTOp {
+PTOscOp : PTOp {
 	var delegate;
 
 	*new{ |name, nargs, delegate|
@@ -95,9 +95,12 @@ PTBasicOpAR : PTOp {
 	}
 
 	instantiate { |args|
+		var iargs = PTOp.instantiateAll(args);
+		var f = iargs[0];
+		var width = iargs[1] ? 0.5;
 		^switch(this.rate(args),
-			\audio, {delegate.ar(*PTOp.instantiateAll(args))},
-			\control, {delegate.kr(*PTOp.instantiateAll(args))},
+			\audio, {delegate.ar(freq: f, width: width)},
+			\control, {delegate.kr(freq: f, width: width)},
 			{delegate.ar(*PTOp.instantiateAll(args))},
 		);
 	}
@@ -202,7 +205,10 @@ PTParser {
 
 	*default {
 		^PTParser.new(Dictionary.with(*[
-			"SIN" -> PTBasicOpAR.new("SIN", 1, SinOsc),
+			"SIN" -> PTOscOp.new("SIN", 1, SinOsc),
+			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
+			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
+			"SAW" -> PTOscOp.new("SAW", 1, Saw),
 			"+" -> PTPlusOp.new("+", 2),
 			"*" -> PTTimesOp.new(),
 		]));
