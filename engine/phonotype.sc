@@ -26,6 +26,10 @@ PTOp {
 		^ret;
 	}
 
+	alloc { |args|
+		^nil;
+	}
+
 	*instantiateAll { |args|
 		^args.collect({|x| x.instantiate()});
 	}
@@ -33,9 +37,9 @@ PTOp {
 }
 
 PTNode {
-	var <op, <args;
+	var <op, <args, <resources;
 	*new { |op, args|
-		^super.newCopyArgs(op, args);
+		^super.newCopyArgs(op, args, op.alloc(args));
 	}
 
 	min {
@@ -56,6 +60,10 @@ PTNode {
 
 	instantiate {
 		^op.instantiate(args);
+	}
+
+	free {
+		if (resources != nil, { resources.do { |x| x.free } });
 	}
 
 	printOn { | stream |
@@ -182,7 +190,7 @@ PTItOp : PTOp {
 	}
 
 	instantiate { |args|
-		"it rate is % prevLine is %\n".postf(this.rate, prevLine);
+		// "it rate is % prevLine is %\n".postf(this.rate, prevLine);
 		^case
 		{this.rate == \audio} {
 			\in.ar(0)
@@ -222,11 +230,11 @@ PTParser {
 	}
 
 	parseHelper {|tokens, pos, it|
-		"parseHelper % % %\n".postf(tokens, pos, it);
+		// "parseHelper % % %\n".postf(tokens, pos, it);
 		^case
 		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
-			"const % at pos %\n".postf(tokens[pos], pos+1);
+			// "const % at pos %\n".postf(tokens[pos], pos+1);
 			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()])
 		}
 		{tokens[pos] == "IT"} {
@@ -242,11 +250,11 @@ PTParser {
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
-			"new node % args % at pos %\n".postf(op.name, myArgs, p);
+			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
 			p -> PTNode.new(op, myArgs)
 		}
 		{true} {
-			tokens.post;
+			// tokens.post;
 			Error.new("None of the above ." + tokens[pos] + ".").throw;
 		};
 	}
@@ -260,16 +268,18 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var parser, <lines, <nodes, <proxies, <out, <in, <inNode;
+	var parser, <lines, <nodes, <proxies, <out, <in, <inNode, <id;
 
 	*new { |parser, size, lines, inNode=nil|
 		var i = NodeProxy.new;
 		i.source = { inNode.instantiate };
-		^super.newCopyArgs(parser, Array.new(size), Array.new(size), Array.new(size), NodeProxy.new, i, inNode).init(lines);
+		^super.newCopyArgs(parser, Array.new(size), Array.new(size),
+			Array.new(size), NodeProxy.new, i, inNode, PT.randId,
+		).init(lines);
 	}
 
 	init { |l|
-		l.do { |x| this.add(x) };
+		l.do { |x| this.prepareAdd(x).commit };
 		if (lines.size == 0, {
 			this.makeOut(in.rate);
 			out.set(\in, in);
@@ -301,28 +311,40 @@ PTScriptNet {
 	* the calling line should be re-interpereted and the new output should be monitored; the old output should
 	* be ended after the crossfade time.
 	*/
-	add { |line|
+	prepareAdd { |line|
 		var node = parser.parse(line, it: nodes.last ? inNode);
 		var proxy = NodeProxy.new;
 		var oldOut = nil;
 		proxy.source = { node.instantiate };
-		if ( out.rate != node.rate, {
-			oldOut = out;
-			out = NodeProxy.new;
-		});
-		if ( out.source == nil, {
-			this.makeOut(node.rate);
-		}, {});
-		if( (proxies.size > 0), {
-			proxies.last <>> proxy <>> out;
-		}, {
-			proxy.set(\in, in);
-			proxy <>> out;
-		});
-		lines.add(line);
-		nodes.add(node);
-		proxies.add(proxy);
-		^oldOut;
+		^(
+			commit: {
+				if ( out.rate != node.rate, {
+					oldOut = out;
+					out = NodeProxy.new;
+				});
+				if ( out.source == nil, {
+					this.makeOut(node.rate);
+				}, {});
+				if( (proxies.size > 0), {
+					proxies.last <>> proxy <>> out;
+				}, {
+					proxy.set(\in, in);
+					proxy <>> out;
+				});
+				lines = lines.add(line);
+				nodes = nodes.add(node);
+				proxies = proxies.add(proxy);
+			},
+			abort: {},
+			output: node,
+			propagate: {out.rate != node.rate},
+		);
+	}
+
+	add { |line|
+		var ret = this.prepareAdd(line);
+		ret.commit;
+		^ret;
 	}
 
 	insertPassthrough { |index|
@@ -344,64 +366,108 @@ PTScriptNet {
 		^this.replace(index, line);
 	}
 
-	removeAt { |index|
+	prepareRemoveAt { |index|
 		var prevProxy = proxies[index-1] ? in;
 		var nextProxy = proxies[index+1] ? out;
 		var proxy = proxies[index];
-		var prevNode = nodes[index-1] ? inNode;
-		var oldOut = nil;
-		nextProxy.xset(\in, prevProxy);
-		lines.removeAt(index);
-		proxies.removeAt(index);
-		nodes.removeAt(index);
-		if ( proxy.rate != prevProxy.rate, {
-			// Replace the line that moved up with itself, to propagate the new
-			// signal rate.
-			oldOut = replace(index, lines[index]);
-		});
-		SystemClock.sched(nextProxy.fadeTime, {proxy.end()});
-		^oldOut;
+		^(
+			commit: {
+				var prevNode = nodes[index-1] ? inNode;
+				var oldOut = nil;
+				nextProxy.xset(\in, prevProxy);
+				lines.removeAt(index);
+				proxies.removeAt(index);
+				nodes.removeAt(index);
+				if ( proxy.rate != prevProxy.rate, {
+					// Replace the line that moved up with itself, to propagate the new
+					// signal rate.
+					oldOut = replace(index, lines[index]);
+				});
+				SystemClock.sched(nextProxy.fadeTime, {proxy.end()});
+			},
+			abort: {},
+			propagate: (proxy.rate!= nextProxy.rate),
+		);
 	}
 
-	replaceInternal { |index, line|
-		var node = parser.parse(line, it: nodes[index-1] ? inNode);
+	removeAt { |index|
+		var ret = this.prepareRemoveAt(index);
+		ret.commit;
+		^ret;
+	}
+
+	prepareReplaceOne { |index, line, it|
+		var node = parser.parse(line, it: it);
 		var proxy = proxies[index];
 		var prevControl = proxies[index-1] ? in;
 		var nextProxy = proxies[index+1] ? out;
-		var oldProxy = nil;
-		if ( proxy.rate != node.rate, {
-			oldProxy = proxy;
-			proxy = NodeProxy.new;
-			proxy.fadeTime = oldProxy.fadeTime;
-			nextProxy.xset(\in, proxy);
-			proxy.set(\in, prevControl);
-			SystemClock.sched(nextProxy.fadeTime, {oldProxy.end()});
-		});
-		proxy.source = { node.instantiate };
-		proxies[index] = proxy;
-		lines[index] = line;
-		nodes[index] = node;
-		^ oldProxy == nil;
+				var oldProxy = nil;
+		^(
+			commit: {
+				if ( proxy.rate != node.rate, {
+					oldProxy = proxy;
+					proxy = NodeProxy.new;
+					proxy.fadeTime = oldProxy.fadeTime;
+					nextProxy.xset(\in, proxy);
+					proxy.set(\in, prevControl);
+					SystemClock.sched(nextProxy.fadeTime, {oldProxy.end()});
+				});
+				proxy.source = { node.instantiate };
+				proxies[index] = proxy;
+				lines[index] = line;
+				nodes[index] = node;
+			},
+			abort: {},
+			output: node,
+			propagate: proxies[index].rate != node.rate,
+		);
 	}
 
-	replace { |index, line|
+	prepareReplace { |index, line|
 		var l = line;
 		var i = index;
 		var done = false;
 		var oldOut = nil;
-		while({ (i < lines.size) && (done.not) }, {
-			done = this.replaceInternal(i, l);
+		var it = nodes[index-1] ? inNode;
+		var preparations = Array.new(lines.size);
+		var p = this.prepareReplaceOne(index, line, it);
+		preparations.add(p);
+		i = index + 1;
+		l = lines[i];
+		while({ (i < lines.size) && (p.propagate) }, {
+			p = this.prepareReplaceOne(i, l, p.output);
+			// p.postln;
 			i = i + 1;
 			l = lines[i];
+			// "ADDING".postln;
+			preparations.add(p);
+			// preparations.postln;
 		});
+		// "LAST PREP".postln;
+		// preparations.last.postln;
+		// preparations.postln;
+		^(
+			commit: {
+				preparations.do({ |x| x.commit });
+				if ( preparations.last.propagate, {
+					oldOut = out;
+					out = NodeProxy.new;
+					this.makeOut(nodes.last.rate);
+					proxies.last <>> out;
+				});
+			},
+			abort: {
+				preparations.do({ |x| x.abort });
+			},
+			output: preparations.last.output,
+			propagate: preparations.last.propagate,
+		);
+	}
 
-		if ( done.not, {
-			oldOut = out;
-			out = NodeProxy.new;
-			this.makeOut(nodes.last.rate);
-			proxies.last <>> out;
-		});
-		^oldOut;
+	replace { |line, index|
+		var ret = this.prepareReplace(index, line);
+		ret.commit;
+		^ret;
 	}
 
 	setFadeTime { |index, time|
@@ -440,11 +506,18 @@ PTScript : PTOp {
 	}
 }
 
+PT {
+	const vowels = "aeiou";
+	const consonants = "abcdefghijklmnopqrstuvwxyz";
 
-// When I return: A PTScript will be an array of 6 proxy nodes. It will support:
-// * ReplaceLine, which will xfade one of the nodes to a newly parsed version (if it has changed)
-// * InsertLine, which will fail if all six lines are full, or insert in the middle if not.
-//      Note that I plan to implement an `IT` op, referring to the node of the previous line.
-//      I must take care when inserting a line to crossfade the line *below* to using the new previous line as IT, but not crossfade all the other node proxies.
+	*randId {
+		^"".catList([consonants, vowels, consonants, consonants, vowels, consonants, consonants, vowels, consonants].collect({ |x| x.choose }));
+	}
+}
 
-// Another task:  Implement automated rate selection.
+
+// Each Script keeps track of its Nets in `refs`.
+// Change edits to be two-phase: 1. Typecheck, 2. Commit.
+// Give a Net a free method.
+// When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
+// When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
