@@ -6,19 +6,15 @@ PTOp {
 		^super.newCopyArgs(name, nargs);
 	}
 
-	min { |args|
+	min { |args, resources|
 		^-1;
 	}
 
-	max { |args|
+	max { |args, resources|
 		^1;
 	}
 
-	constant { |args|
-		^(this.min() == this.max());
-	}
-
-	rate { |args|
+	rate { |args, resources|
 		var ret = \control;
 		args.do({ |x|
 			if (x.rate == \audio, {ret = \audio}, {});
@@ -30,7 +26,7 @@ PTOp {
 		^nil;
 	}
 
-	*instantiateAll { |args|
+	*instantiateAll { |args, resources|
 		^args.collect({|x| x.instantiate()});
 	}
 
@@ -43,19 +39,15 @@ PTNode {
 	}
 
 	min {
-		^op.min(args);
+		^op.min(args, resources);
 	}
 
 	max {
-		^op.max(args);
+		^op.max(args, resources);
 	}
 
 	rate {
-		^op.rate(args);
-	}
-
-	constant {
-		^op.constant(args);
+		^op.rate(args, resources);
 	}
 
 	instantiate {
@@ -63,7 +55,10 @@ PTNode {
 	}
 
 	free {
-		if (resources != nil, { resources.do { |x| x.free } });
+		if (resources != nil, {
+			resources.do { |x| x.free };
+			args.do { |x| x.free };
+		});
 	}
 
 	printOn { | stream |
@@ -78,19 +73,19 @@ PTConst : PTOp {
 		^super.newCopyArgs("", "1");
 	}
 
-	min { |args|
+	min { |args, resources|
 		^args[0];
 	}
 
-	max { |args|
+	max { |args, resources|
 		^args[0];
 	}
 
-	rate { |args|
-		^\constant;
+	rate { |args, resources|
+		^\control;
 	}
 
-	instantiate { |args|
+	instantiate { |args, resources|
 		^args[0];
 	}
 }
@@ -102,7 +97,7 @@ PTOscOp : PTOp {
 		^super.newCopyArgs(name, nargs, delegate);
 	}
 
-	instantiate { |args|
+	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args);
 		var f = iargs[0];
 		var width = iargs[1] ? 0.5;
@@ -113,7 +108,7 @@ PTOscOp : PTOp {
 		);
 	}
 
-	rate { |args|
+	rate { |args, resources|
 		// Assume the first arg is frequency.
 		^if(args[0].max > 10, { \audio }, { \control });
 	}
@@ -124,16 +119,16 @@ PTPlusOp : PTOp {
 		^super.newCopyArgs(name, nargs);
 	}
 
-	instantiate { |args|
+	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args);
 		^Mix.ar(iargs);
 	}
 
-	min { |args|
+	min { |args, resources|
 		^args.sum {|i| i.min};
 	}
 
-	max { |args|
+	max { |args, resources|
 		^args.sum {|i| i.max};
 	}
 
@@ -144,12 +139,12 @@ PTTimesOp : PTOp {
 		^super.newCopyArgs("*", 2);
 	}
 
-	instantiate { |args|
+	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args);
 		^iargs[0] * iargs[1];
 	}
 
-	min { |args|
+	min { |args, resources|
 		^[
 			args[0].min*args[1].min,
 			args[0].min*args[1].max,
@@ -159,7 +154,7 @@ PTTimesOp : PTOp {
 		].minItem;
 	}
 
-	max { |args|
+	max { |args, resources|
 		^[
 			args[0].min*args[1].min,
 			args[0].min*args[1].max,
@@ -177,19 +172,19 @@ PTItOp : PTOp {
 		^super.newCopyArgs("IT", 0, prevLine);
 	}
 
-	rate { |args|
+	rate { |args, resources|
 		^prevLine.rate;
 	}
 
-	min { |args|
+	min { |args, resources|
 		^prevLine.min;
 	}
 
-	max { |args|
+	max { |args, resources|
 		^prevLine.max;
 	}
 
-	instantiate { |args|
+	instantiate { |args, resources|
 		// "it rate is % prevLine is %\n".postf(this.rate, prevLine);
 		^case
 		{this.rate == \audio} {
@@ -269,24 +264,46 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var parser, <order, <dict, <id;
+	var parser, <order, <dict, <id, script, argProxies;
 
-	*new { |parser, size, lines, inNode=nil|
-		var i = NodeProxy.new;
+	*new { |parser, lines, args=nil, script=nil|
+		var i;
 		var o = NodeProxy.new;
-		i.source = { inNode.instantiate };
+		var aa = args ? [PT.zeroNode];
+		var argProxies = List.new;
+		4.do { |i|
+			var a = aa[i];
+			var n = NodeProxy.new;
+			if (
+				a != nil,
+				{ n.source = { a.instantiate } },
+				{ n.source = {0.0} }
+			);
+			argProxies.add(n);
+		};
+		i = argProxies[0];
 		PTScriptNet.makeOut(o, i.rate);
 		o.set(\in, i);
 		^super.newCopyArgs(parser,
 			["in", "out"],
 			Dictionary.newFrom([
-				"in", (line: nil, node: inNode, proxy: i),
+				"in", (line: nil, node: aa[0], proxy: i),
 				"out", (line: nil, node: nil, proxy: o),
-		]), PT.randId).init(lines);
+		]), PT.randId, script, argProxies).init(lines);
+	}
+
+	newProxy { |rate=nil|
+		var ret = NodeProxy.new(rate: rate);
+		ret.set(\i1, argProxies[0]);
+		ret.set(\i2, argProxies[1]);
+		ret.set(\i3, argProxies[2]);
+		ret.set(\i4, argProxies[3]);
+		^ret;
 	}
 
 
 	init { |l|
+		if (script != nil, {script.refs[id] = this});
 		l.do { |x| this.add(x) };
 	}
 
@@ -327,7 +344,7 @@ PTScriptNet {
 		var entry = (
 			line: "IT",
 			node: parser.parse("IT", it: prevEntry.node),
-			proxy: NodeProxy.new,
+			proxy: this.newProxy,
 		);
 		entry.proxy.source = { entry.node.instantiate };
 		prevEntry.proxy <>> entry.proxy <>> nextEntry.proxy;
@@ -395,7 +412,7 @@ PTScriptNet {
 		var newEntry = (
 			line: line,
 			node: newNode,
-			proxy: if(propagate, {NodeProxy.new(rate: newNode.rate)}, {oldEntry.proxy}),
+			proxy: if(propagate, {this.newProxy(rate: newNode.rate)}, {oldEntry.proxy}),
 		);
 
 		^(
@@ -479,35 +496,114 @@ PTScriptNet {
 		dict[order[index]].proxy.fadeTime = time;
 	}
 
+	free {
+		// clear all my proxies
+		dict.do { |entry| entry.proxy.clear };
+		// remove myself from ref tracking.
+		if (script != nil, {script.refs.removeAt(id)});
+	}
+
 }
 
+PTScriptOp : PTOp {
+	var parser, script;
 
-PTScript : PTOp {
-	var <size, <lines, refs;
+	*new { |name, nargs, parser, script|
+		^super.newCopyArgs(name, nargs, parser, script);
+	}
+
+	min { |args, resources|
+		^-10;
+	}
+
+	max { |args, resources|
+		^10;
+	}
+
+	rate { |args, resources|
+		var net = resources[0];
+		^net.out.rate;
+	}
+
+	alloc { |args|
+		var net = PTScriptNet.new(parser, script.lines, args, script);
+		^[net];
+	}
+
+	instantiate { |args, resources|
+		var net = resources[0];
+		^switch (net.out.rate,
+			\audio, { net.out.ar },
+			\control, { net.out.kr },
+			{ Error.new("Unknown rate").throw },
+		);
+	}
+}
+
+PTScript {
+	var <size, <lines, <fadeTimes, <refs;
 	*new { |size|
-		^super.newCopyArgs(size, Array.new(size), Array.new(0));
+		^super.newCopyArgs(size, List.new, List.new, Dictionary.new);
 	}
 
 	add { |line|
+		var idx = lines.size;
+		insertPassthrough(idx);
+		replace(idx, line);
+	}
+
+	validateIndex { |index|
+		if (index < 0, { Error.new("Index must be greater than zero").throw });
+		if (index > lines.size, { Error.new("Index must be less than the current number of lines").throw });
+	}
+
+	insertPassthrough { |index|
 		if (lines.size >= size, {
-			Error.new("Can't add another line").throw
-		}, {});
-		lines = lines.add(line);
+			Error.new("Can't insert another line").throw
+		});
+		this.validateIndex(index);
+		// Inserting a passthrough should never fail.
 		refs.do { |r|
-			r.add(line);
+			// Indexes in the PTScriptNet are always one greater to account for the input row.
+			r.insertPassthrough(index + 1);
+		};
+		lines.insert(index, "IT");
+		fadeTimes.insert(index, 0.01);
+	}
+
+	makeHappen { |f|
+		var preparations = List.new;
+		try {
+			refs.do { |r| preparations.add(f.value(r)) };
+		} { |err|
+			preparations.do { |p|
+				p.abort;
+			};
+			err.throw;
+		};
+		preparations.do { |p|
+			p.commit;
+			SystemClock.sched(p.time, {p.cleanup});
 		};
 	}
 
-	insert { |index, line|
+	removeAt { |index|
+		this.validateIndex(index);
+		this.makeHappen({ |r| r.prepareRemoveAt(index+1) });
+		lines.removeAt(index);
+		fadeTimes.removeAt(index);
 	}
 
 	replace { |index, line|
-	}
-
-	delete { |index|
+		this.validateIndex(index);
+		this.makeHappen({ |r| r.prepareReplace(index+1, line)});
+		lines[index] = line;
 	}
 
 	setFadeTime { |index, time|
+		this.validateIndex(index);
+		refs.do { |r| r.setFadeTime(index+1, time) };
+		fadeTimes[index] = time;
 	}
 }
 
@@ -515,14 +611,21 @@ PT {
 	const vowels = "aeiou";
 	const consonants = "abcdefghijklmnopqrstuvwxyz";
 
+	*zeroNode {
+		PTNode.new(PTConst.new(), [0])
+	}
+
 	*randId {
-		^"".catList([consonants, vowels, consonants, consonants, vowels, consonants, consonants, vowels, consonants].collect({ |x| x.choose }));
+		^"".catList([
+			consonants, vowels, consonants,
+			consonants, vowels, consonants,
+			consonants, vowels, consonants].collect({ |x| x.choose }));
 	}
 }
 
 
-// Each Script keeps track of its Nets in `refs`.
-// Change edits to be two-phase: 1. Typecheck, 2. Commit.
-// Give a Net a free method.
-// When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
+// [x] Each Script keeps track of its Nets in `refs`.
+// [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
+// [x] Give a Net a free method.
+// [x] When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
 // When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
