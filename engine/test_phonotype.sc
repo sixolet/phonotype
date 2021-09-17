@@ -12,26 +12,36 @@ TestPTScriptNet : UnitTest {
 		this.assertEquals(net.out.rate, \audio);
 	}
 
+	test_insertPassthrough {
+		net.insertPassthrough(1);
+		this.assertEquals(net.lines[0], "IT");
+	}
+
+	test_insert {
+		net.insert(1, "* IT SIN 1");
+		this.assertEquals(net.lines[0], "* IT SIN 1");
+		net.insert(1, "* IT SIN 2");
+		this.assertEquals(net.lines[0], "* IT SIN 2");
+		this.assertEquals(net.lines[1], "* IT SIN 1");
+	}
+
 	test_keepAudioRate {
-		var p = net.prepareAdd("* IT SIN 1");
+		var p = net.add("* IT SIN 1");
 		this.assert(p.propagate.not);
-		p.commit;
 		this.assert(net.out.rate == \audio);
 		this.assertEquals(net.lines[0], "* IT SIN 1");
 	}
 
 	test_makeControlRate {
-		var p = net.prepareAdd("SIN 1");
+		var p = net.add("SIN 1");
 		this.assert(p.propagate);
-		p.commit;
-		this.assert(net.out.rate == \control);
+		this.assertEquals(net.out.rate, \control);
 	}
 
 	test_replaceOnly {
-		var p = net.prepareAdd("* IT SIN 1");
+		var p = net.add("* IT SIN 1");
 		this.assert(p.propagate.not);
-		p.commit;
-		p = net.prepareReplace(0, "SIN 1");
+		p = net.prepareReplace(1, "SIN 1");
 		this.assert(p.propagate);
 		p.commit;
 		this.assertEquals(net.out.rate, \control);
@@ -42,7 +52,7 @@ TestPTScriptNet : UnitTest {
 		var p;
 		net = PTScriptNet.new(parser, 6, ["SIN 1", "* IT SIN 2"], parser.parse("SIN 440"));
 		this.assertEquals(net.out.rate, \control);
-		p = net.prepareReplace(0, "SIN 440");
+		p = net.prepareReplace(1, "SIN 440");
 		this.assert(p.propagate);
 		p.commit;
 		this.assertEquals(net.out.rate, \audio);
@@ -56,7 +66,7 @@ TestPTScriptNet : UnitTest {
 		net = PTScriptNet.new(parser, 6, ["SIN 1", "* IT SIN 2"], parser.parse("SIN 440"));
 		this.assertEquals(net.out.rate, \control);
 		try {
-			p = net.prepareReplace(0, "WOW BAD");
+			p = net.prepareReplace(1, "WOW BAD");
 		} { |err|
 			e = err;
 		};

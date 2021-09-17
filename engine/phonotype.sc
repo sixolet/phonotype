@@ -222,7 +222,8 @@ PTParser {
 		]));
 	}
 
-	parse { |s, it = nil|
+	parse { |str, it = nil|
+		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var tokens = s.split($ );
 		var itt = (if (it == nil) { PTNode.new(constOp, [0])} { it });
 		var a = this.parseHelper(tokens, 0, itt);
@@ -268,31 +269,42 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var parser, <lines, <nodes, <proxies, <out, <in, <inNode, <id;
+	var parser, <order, <dict, <id;
 
 	*new { |parser, size, lines, inNode=nil|
 		var i = NodeProxy.new;
+		var o = NodeProxy.new;
 		i.source = { inNode.instantiate };
-		^super.newCopyArgs(parser, Array.new(size), Array.new(size),
-			Array.new(size), NodeProxy.new, i, inNode, PT.randId,
-		).init(lines);
+		PTScriptNet.makeOut(o, i.rate);
+		o.set(\in, i);
+		^super.newCopyArgs(parser,
+			["in", "out"],
+			Dictionary.newFrom([
+				"in", (line: nil, node: inNode, proxy: i),
+				"out", (line: nil, node: nil, proxy: o),
+		]), PT.randId).init(lines);
 	}
 
+
 	init { |l|
-		l.do { |x| this.prepareAdd(x).commit };
-		if (lines.size == 0, {
-			this.makeOut(in.rate);
-			out.set(\in, in);
-		});
+		l.do { |x| this.add(x) };
+	}
+
+	lines {
+		^order.collect({|x| dict[x].line}).reject({|x| x == nil});
+	}
+
+	out {
+		^dict[order.last].proxy;
 	}
 
 	printOn { | stream |
         stream << "PTScriptNet(\n";
-		lines.do { |l| stream << l << "\n" };
+		this.lines.do { |l| stream << l << "\n" };
 		stream << ")";
     }
 
-	makeOut { |rate|
+	*makeOut { |out, rate|
 		case { rate == \audio } {
 			out.source = { \in.ar() };
 		}
@@ -304,61 +316,23 @@ PTScriptNet {
 		};
 	}
 
-	/**
-	* Adds a line to the script net.
-	* Returns nil if the same script output node will continue to work; the old node if not.
-	* This is the case if the script changes its output rate. In the case this method returns non-nil,
-	* the calling line should be re-interpereted and the new output should be monitored; the old output should
-	* be ended after the crossfade time.
-	*/
-	prepareAdd { |line|
-		var node = parser.parse(line, it: nodes.last ? inNode);
-		var proxy = NodeProxy.new;
-		var oldOut = nil;
-		proxy.source = { node.instantiate };
-		^(
-			commit: {
-				if ( out.rate != node.rate, {
-					oldOut = out;
-					out = NodeProxy.new;
-				});
-				if ( out.source == nil, {
-					this.makeOut(node.rate);
-				}, {});
-				if( (proxies.size > 0), {
-					proxies.last <>> proxy <>> out;
-				}, {
-					proxy.set(\in, in);
-					proxy <>> out;
-				});
-				lines = lines.add(line);
-				nodes = nodes.add(node);
-				proxies = proxies.add(proxy);
-			},
-			abort: {},
-			output: node,
-			propagate: {out.rate != node.rate},
-		);
-	}
-
 	add { |line|
-		var ret = this.prepareAdd(line);
-		ret.commit;
-		^ret;
+		^this.insert(order.size - 1, line);
 	}
 
 	insertPassthrough { |index|
-		var prevProxy = proxies[index-1] ? in;
-		var nextProxy = proxies[index] ? out;
-		var prevNode = nodes[index-1] ? inNode;
-		var line = "IT";
-		var node = parser.parse(line, it: prevNode);
-		var proxy = NodeProxy.new;
-		proxy.source = { node.instantiate };
-		prevProxy <>> proxy <>> nextProxy;
-		lines.insert(index, line);
-		nodes.insert(index, node);
-		proxies.insert(index, proxy);
+		var id = PT.randId;
+		var prevEntry = dict[order[index-1]];
+		var nextEntry = dict[order[index]];
+		var entry = (
+			line: "IT",
+			node: parser.parse("IT", it: prevEntry.node),
+			proxy: NodeProxy.new,
+		);
+		entry.proxy.source = { entry.node.instantiate };
+		prevEntry.proxy <>> entry.proxy <>> nextEntry.proxy;
+		dict[id] = entry;
+		order.insert(index, id);
 	}
 
 	insert { |index, line|
@@ -366,28 +340,46 @@ PTScriptNet {
 		^this.replace(index, line);
 	}
 
+	at { |index|
+		^if(index.class === String, {dict[index]}, {dict[order[index]]});
+	}
+
 	prepareRemoveAt { |index|
-		var prevProxy = proxies[index-1] ? in;
-		var nextProxy = proxies[index+1] ? out;
-		var proxy = proxies[index];
-		^(
+		var prev = this[index-1];
+		var next = this[index+1];
+		var toRemove = this[index];
+		var id = order[index];
+		var propagate = (prev.node.rate != toRemove.node.rate);
+		var preparations = List.new;
+		var i = index + 1;
+		var p = (
 			commit: {
-				var prevNode = nodes[index-1] ? inNode;
-				var oldOut = nil;
-				nextProxy.xset(\in, prevProxy);
-				lines.removeAt(index);
-				proxies.removeAt(index);
-				nodes.removeAt(index);
-				if ( proxy.rate != prevProxy.rate, {
-					// Replace the line that moved up with itself, to propagate the new
-					// signal rate.
-					oldOut = replace(index, lines[index]);
+				if(propagate, {
+					//
+				}, {
+					next.proxy.xset(\in, prev.proxy);
 				});
-				SystemClock.sched(nextProxy.fadeTime, {proxy.end()});
+				order.removeAt(index);
+				dict.removeAt(id);
 			},
 			abort: {},
-			propagate: (proxy.rate!= nextProxy.rate),
+			cleanup: {
+				toRemove.proxy.clear;
+				toRemove.node.free;
+			},
+			time: next.proxy.fadeTime,
+			output: prev,
+			propagate: propagate,
 		);
+		preparations.add(p);
+		i = index + 1;
+		while({ (i < order.size) && (p.propagate) }, {
+			p = this.prepareReparse(order[i], p.output);
+			// p.postln;
+			i = i + 1;
+			preparations.add(p);
+		});
+		^PTScriptNet.combinePreparations(preparations);
 	}
 
 	removeAt { |index|
@@ -396,82 +388,95 @@ PTScriptNet {
 		^ret;
 	}
 
-	prepareReplaceOne { |index, line, it|
-		var node = parser.parse(line, it: it);
-		var proxy = proxies[index];
-		var prevControl = proxies[index-1] ? in;
-		var nextProxy = proxies[index+1] ? out;
-				var oldProxy = nil;
+	prepareReplaceOne { |id, line, prevEntry|
+		var oldEntry = dict[id];
+		var newNode = parser.parse(line, it: prevEntry.node);
+		var propagate = (newNode.rate != oldEntry.node.rate);
+		var newEntry = (
+			line: line,
+			node: newNode,
+			proxy: if(propagate, {NodeProxy.new(rate: newNode.rate)}, {oldEntry.proxy}),
+		);
+
 		^(
 			commit: {
-				if ( proxy.rate != node.rate, {
-					oldProxy = proxy;
-					proxy = NodeProxy.new;
-					proxy.fadeTime = oldProxy.fadeTime;
-					nextProxy.xset(\in, proxy);
-					proxy.set(\in, prevControl);
-					SystemClock.sched(nextProxy.fadeTime, {oldProxy.end()});
+				newEntry.proxy.source = { newEntry.node.instantiate };
+				if (propagate, {
+					newEntry.proxy.fadeTime = oldEntry.proxy.fadeTime;
+					newEntry.proxy.set(\in, prevEntry.proxy);
+				}, {
+					newEntry.proxy.xset(\in, prevEntry.proxy);
 				});
-				proxy.source = { node.instantiate };
-				proxies[index] = proxy;
-				lines[index] = line;
-				nodes[index] = node;
+				dict[id] = newEntry;
 			},
-			abort: {},
-			output: node,
-			propagate: proxies[index].rate != node.rate,
+			cleanup: {
+				oldEntry.node.free;
+				if(propagate, {
+					oldEntry.proxy.clear;
+				});
+			},
+			abort: {
+				newEntry.node.free;
+				if(propagate, {
+					newEntry.proxy.clear;
+				});
+			},
+			output: newEntry,
+			propagate: propagate,
+			time: oldEntry.proxy.fadeTime,
 		);
 	}
 
-	prepareReplace { |index, line|
-		var l = line;
-		var i = index;
-		var done = false;
-		var oldOut = nil;
-		var it = nodes[index-1] ? inNode;
-		var preparations = Array.new(lines.size);
-		var p = this.prepareReplaceOne(index, line, it);
-		preparations.add(p);
-		i = index + 1;
-		l = lines[i];
-		while({ (i < lines.size) && (p.propagate) }, {
-			p = this.prepareReplaceOne(i, l, p.output);
-			// p.postln;
-			i = i + 1;
-			l = lines[i];
-			// "ADDING".postln;
-			preparations.add(p);
-			// preparations.postln;
-		});
-		// "LAST PREP".postln;
-		// preparations.last.postln;
-		// preparations.postln;
+	prepareReparse { |id, prevEntry|
+		^this.prepareReplaceOne(id, dict[id].line, prevEntry);
+	}
+
+	*combinePreparations { |preparations|
 		^(
 			commit: {
 				preparations.do({ |x| x.commit });
-				if ( preparations.last.propagate, {
-					oldOut = out;
-					out = NodeProxy.new;
-					this.makeOut(nodes.last.rate);
-					proxies.last <>> out;
-				});
 			},
 			abort: {
 				preparations.do({ |x| x.abort });
 			},
+			cleanup: {
+				preparations.do({|x| x.cleanup});
+			},
 			output: preparations.last.output,
 			propagate: preparations.last.propagate,
+			time: { preparations.collect({ |x| x.time }).maxItem },
 		);
 	}
 
-	replace { |line, index|
-		var ret = this.prepareReplace(index, line);
+	prepareReplace { |index, line|
+		var i;
+		var id = order[index];
+		var prevEntry = dict[order[index-1]];
+		var preparations = List.new;
+		var p = this.prepareReplaceOne(id, line, prevEntry);
+		preparations.add(p);
+		i = index + 1;
+		while({ (i < order.size) && (p.propagate) }, {
+			p = this.prepareReparse(order[i], p.output);
+			// p.postln;
+			i = i + 1;
+			preparations.add(p);
+		});
+		// "LAST PREP".postln;
+		// preparations.last.postln;
+		// preparations.postln;
+		^PTScriptNet.combinePreparations(preparations);
+	}
+
+	replace { |index, line|
+		var ret = this.prepareReplace(index: index, line: line);
 		ret.commit;
+		SystemClock.sched(ret.time, {ret.cleanup});
 		^ret;
 	}
 
 	setFadeTime { |index, time|
-		proxies[index].fadeTime = time;
+		dict[order[index]].proxy.fadeTime = time;
 	}
 
 }
