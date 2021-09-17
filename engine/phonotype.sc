@@ -285,7 +285,7 @@ PTScriptNet {
 		PTScriptNet.makeOut(o, i.rate);
 		o.set(\in, i);
 		^super.newCopyArgs(parser,
-			["in", "out"],
+			List.newUsing(["in", "out"]),
 			Dictionary.newFrom([
 				"in", (line: nil, node: aa[0], proxy: i),
 				"out", (line: nil, node: nil, proxy: o),
