@@ -51,7 +51,7 @@ PTNode {
 	}
 
 	instantiate {
-		^op.instantiate(args);
+		^op.instantiate(args, resources);
 	}
 
 	free {
@@ -165,36 +165,36 @@ PTTimesOp : PTOp {
 	}
 }
 
-PTItOp : PTOp {
-	var prevLine;
+PTArgOp : PTOp {
+	var symbol, r;
 
-	*new { |prevLine| // A PTNode
-		^super.newCopyArgs("IT", 0, prevLine);
+	*new { |name, symbol, rate|
+		^super.newCopyArgs(name, 0, symbol, rate);
 	}
 
 	rate { |args, resources|
-		^prevLine.rate;
+		^r;
 	}
 
 	min { |args, resources|
-		^prevLine.min;
+		^-10;
 	}
 
 	max { |args, resources|
-		^prevLine.max;
+		^10;
 	}
 
 	instantiate { |args, resources|
 		// "it rate is % prevLine is %\n".postf(this.rate, prevLine);
 		^case
 		{this.rate == \audio} {
-			\in.ar(0)
+			symbol.ar(0)
 		}
 		{this.rate == \control} {
-			\in.kr(0)
+			symbol.kr(0)
 		}
 		{true} {
-			Error.new("Unknown rate for IT.").throw;
+			symbol.kr(0)
 		}
 	}
 }
@@ -217,15 +217,14 @@ PTParser {
 		]));
 	}
 
-	parse { |str, it = nil|
+	parse { |str, context=nil|
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var tokens = s.split($ );
-		var itt = (if (it == nil) { PTNode.new(constOp, [0])} { it });
-		var a = this.parseHelper(tokens, 0, itt);
+		var a = this.parseHelper(tokens, 0, context);
 		^a.value;
 	}
 
-	parseHelper {|tokens, pos, it|
+	parseHelper {|tokens, pos, context|
 		// "parseHelper % % %\n".postf(tokens, pos, it);
 		^case
 		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
@@ -233,16 +232,24 @@ PTParser {
 			// "const % at pos %\n".postf(tokens[pos], pos+1);
 			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()])
 		}
-		{tokens[pos] == "IT"} {
-			pos+1 -> PTNode.new(PTItOp.new(prevLine: it), [])
+		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
+			var op = context[tokens[pos].asSymbol];
+			var p = pos + 1;
+			var myArgs = Array.new(maxSize: op.nargs);
+			{myArgs.size < op.nargs}.while({
+				var a = this.parseHelper(tokens, p, context);
+				myArgs = myArgs.add(a.value);
+				p = a.key;
+			});
+			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
+			p -> PTNode.new(op, myArgs)
 		}
-
 		{ops.includesKey(tokens[pos])} {
 			var op = ops[tokens[pos]];
 			var p = pos + 1;
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
-				var a = this.parseHelper(tokens, p, it);
+				var a = this.parseHelper(tokens, p, context);
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
@@ -251,6 +258,12 @@ PTParser {
 		}
 		{true} {
 			// tokens.post;
+			var c = context;
+			"CONTEXT".postln;
+			while({context != nil},{
+				context.postln;
+				context = context.parent;
+			});
 			Error.new("None of the above ." + tokens[pos] + ".").throw;
 		};
 	}
@@ -290,6 +303,19 @@ PTScriptNet {
 				"in", (line: nil, node: aa[0], proxy: i),
 				"out", (line: nil, node: nil, proxy: o),
 		]), PT.randId, script, argProxies).init(lines);
+	}
+
+	// Get a context for evaluation where the previous line has rate r.
+	contextWithItRate { |r|
+		var ret = (
+			I1: PTArgOp("I1", \i1, argProxies[0].rate),
+			I2: PTArgOp("I2", \i2, argProxies[1].rate),
+			I3: PTArgOp("I3", \i3, argProxies[2].rate),
+			I4: PTArgOp("I4", \i1, argProxies[3].rate),
+			IT: PTArgOp("IT", \in, r),
+		);
+		if (script != nil, {ret.parent = script.context});
+		^ret;
 	}
 
 	newProxy { |rate=nil|
@@ -343,7 +369,7 @@ PTScriptNet {
 		var nextEntry = dict[order[index]];
 		var entry = (
 			line: "IT",
-			node: parser.parse("IT", it: prevEntry.node),
+			node: parser.parse("IT", this.contextWithItRate(prevEntry.node.rate)),
 			proxy: this.newProxy,
 		);
 		entry.proxy.source = { entry.node.instantiate };
@@ -407,7 +433,7 @@ PTScriptNet {
 
 	prepareReplaceOne { |id, line, prevEntry|
 		var oldEntry = dict[id];
-		var newNode = parser.parse(line, it: prevEntry.node);
+		var newNode = parser.parse(line, context: this.contextWithItRate(prevEntry.node.rate));
 		var propagate = (newNode.rate != oldEntry.node.rate);
 		var newEntry = (
 			line: line,
@@ -541,15 +567,16 @@ PTScriptOp : PTOp {
 }
 
 PTScript {
-	var <size, <lines, <fadeTimes, <refs;
-	*new { |size|
-		^super.newCopyArgs(size, List.new, List.new, Dictionary.new);
+	var <size, <lines, <fadeTimes, <refs, <context;
+
+	*new { |size, context|
+		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context);
 	}
 
 	add { |line|
 		var idx = lines.size;
-		insertPassthrough(idx);
-		replace(idx, line);
+		this.insertPassthrough(idx);
+		this.replace(idx, line);
 	}
 
 	validateIndex { |index|
@@ -610,6 +637,89 @@ PTScript {
 PT {
 	const vowels = "aeiou";
 	const consonants = "abcdefghijklmnopqrstuvwxyz";
+	const numScripts = 9;
+	const scriptSize = 6;
+
+	var <scripts, parser, main;
+
+	*new {
+		^super.newCopyArgs(Array.new(numScripts), PTParser.default, nil).init;
+	}
+
+	init {
+		var ctx = ();
+		numScripts.do { |i|
+			var script = PTScript.new(scriptSize, ctx);
+			var oldCtx = ctx;
+			scripts.add(script);
+			ctx = ();
+			ctx.parent = oldCtx;
+			5.do { |nargs|
+				var name = "$" ++ (i + 1);
+				if (nargs > 0, { name = (name ++ "." ++ nargs) });
+				ctx[name.asSymbol] = PTScriptOp.new(name, nargs, parser, script);
+			}
+		};
+		main = PTScriptNet.new(parser: parser, lines: [], args: [], script: scripts[numScripts-1]);
+	}
+
+	replace { |script, index, line|
+		scripts[script].replace(index, line);
+	}
+
+	insertPassthrough { |script, index|
+		scripts[script].insertPassthrough(index);
+	}
+
+	removeAt { |script, index|
+		scripts[script].removeAt(index);
+	}
+
+	add { |script, line|
+		scripts[script].add(line);
+	}
+
+	printOn { | stream |
+		scripts.do { |script, i|
+			stream << "#" << (i + 1) << "\n";
+			script.lines.do { |l|
+				stream << l << "\n";
+			};
+			stream << "\n";
+		}
+    }
+
+	clear {
+		scripts.reverseDo { |script|
+			script.lines.size.reverseDo { |i|
+				script.removeAt(i);
+			};
+		}
+	}
+
+	load { |str|
+		var lines = str.split($\n);
+		var curScript = 0;
+		this.clear();
+		lines.do { |l|
+			case {l[0] == $#} {
+				curScript = (l[1..].asInteger - 1);
+			}
+			{l == ""} {
+				// pass
+			}
+			{true} {
+				"ADDING ".post;
+				curScript.postln;
+				l.postln;
+				this.add(curScript, l);
+			};
+		}
+	}
+
+	out {
+		^main.out;
+	}
 
 	*zeroNode {
 		PTNode.new(PTConst.new(), [0])
@@ -621,6 +731,7 @@ PT {
 			consonants, vowels, consonants,
 			consonants, vowels, consonants].collect({ |x| x.choose }));
 	}
+
 }
 
 
@@ -628,4 +739,8 @@ PT {
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
 // [x] Give a Net a free method.
 // [x] When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
+// [ ] Full multi-script setup with editing.
+// [ ] Script op
+// [ ] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
+// [ ] Check for various leaks
 // When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 

@@ -5,7 +5,7 @@ TestPTScriptNet : UnitTest {
 	setUp {
         // this will be called before each test
 		parser = PTParser.default;
-		net = PTScriptNet.new(parser, [], [parser.parse("SIN 440")]);
+		net = PTScriptNet.new(parser, [], [parser.parse("SIN 440", Dictionary.new)]);
     }
 
 	test_initializationToSin {
