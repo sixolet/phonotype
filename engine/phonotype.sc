@@ -689,6 +689,10 @@ PT {
 		}
     }
 
+	setFadeTime { |script, index, time|
+		scripts[script].setFadeTime(index, time);
+	}
+
 	clear {
 		scripts.reverseDo { |script|
 			script.lines.size.reverseDo { |i|
@@ -739,8 +743,8 @@ PT {
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
 // [x] Give a Net a free method.
 // [x] When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
-// [ ] Full multi-script setup with editing.
-// [ ] Script op
+// [x] Full multi-script setup with editing.
+// [x] Script op
 // [ ] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
 // [ ] Check for various leaks
 // When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
