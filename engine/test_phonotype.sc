@@ -33,11 +33,11 @@ SIN 440
 * IT $1.1 0.5
 "
 		);
-		p.setFadeTime(0, 0, 3);
+		p.setFadeTime(0, 0, 0.4);
 		this.assertEquals(p.scripts[0].refs.size, 1);
 		p.scripts[0].refs.do { |r|
 			this.assertEquals(r[1].line, "TRI I1");
-			this.assertEquals(r[1].proxy.fadeTime, 3);
+			this.assertEquals(r[1].proxy.fadeTime, 0.4);
 		};
 	}
 
@@ -55,6 +55,23 @@ SIN 440
 		p.scripts[0].refs.do { |r|
 			this.assertEquals(r.out.rate, \control);
 		};
+	}
+
+	test_replaceDoesntLeakRefs {
+		var done = false;
+		p.load("
+#1
+TRI I1
+#9
+SIN 440
+* IT $1.1 0.5
+"
+		);
+		p.replace(8, 1, "* SIN 1 IT");
+		SystemClock.sched(0.2, {done = true});
+		this.wait({done}, "waiting for some time to let cleanup happen", 1);
+		this.assertEquals(p.scripts[8].lines, List.newUsing(["SIN 440", "* SIN 1 IT"]));
+		this.assertEquals(p.scripts[0].refs.size, 0);
 	}
 }
 

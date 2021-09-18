@@ -57,8 +57,8 @@ PTNode {
 	free {
 		if (resources != nil, {
 			resources.do { |x| x.free };
-			args.do { |x| x.free };
 		});
+		args.do { |x| x.free };
 	}
 
 	printOn { | stream |
