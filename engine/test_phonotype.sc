@@ -57,6 +57,25 @@ SIN 440
 		};
 	}
 
+	test_replaceGoesAudioInScriptCall {
+		var done = false;
+		p.load("
+#1
+TRI I1
+#9
+SIN 440
+* IT $1.1 0.5
+"
+		);
+		p.replace(0, 0, "+ 0.5 * 0.5 TRI 220");
+		SystemClock.sched(0.2, {done = true});
+		this.wait({done}, "waiting for some time to let cleanup happen", 1);
+		this.assertEquals(p.scripts[0].refs.size, 1);
+		p.scripts[0].refs.do { |r|
+			this.assertEquals(r.out.rate, \audio);
+		};
+	}
+
 	test_replaceDoesntLeakRefs {
 		var done = false;
 		p.load("

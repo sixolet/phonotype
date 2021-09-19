@@ -22,7 +22,7 @@ PTOp {
 		^ret;
 	}
 
-	alloc { |args|
+	alloc { |args, callSite|
 		^nil;
 	}
 
@@ -34,8 +34,8 @@ PTOp {
 
 PTNode {
 	var <op, <args, <resources;
-	*new { |op, args|
-		^super.newCopyArgs(op, args, op.alloc(args));
+	*new { |op, args, callSite=nil|
+		^super.newCopyArgs(op, args, op.alloc(args, callSite));
 	}
 
 	min {
@@ -226,11 +226,12 @@ PTParser {
 
 	parseHelper {|tokens, pos, context|
 		// "parseHelper % % %\n".postf(tokens, pos, it);
+		"HELPER CONTEXT CALLSITE %\n".postf(context.callSite);
 		^case
 		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
 			// "const % at pos %\n".postf(tokens[pos], pos+1);
-			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()])
+			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
 			var op = context[tokens[pos].asSymbol];
@@ -242,7 +243,7 @@ PTParser {
 				p = a.key;
 			});
 			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
-			p -> PTNode.new(op, myArgs)
+			p -> PTNode.new(op, myArgs, callSite: context.callSite)
 		}
 		{ops.includesKey(tokens[pos])} {
 			var op = ops[tokens[pos]];
@@ -254,7 +255,7 @@ PTParser {
 				p = a.key;
 			});
 			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
-			p -> PTNode.new(op, myArgs)
+			p -> PTNode.new(op, myArgs, callSite: context.callSite)
 		}
 		{true} {
 			// tokens.post;
@@ -277,9 +278,9 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var parser, <order, <dict, <id, script, argProxies;
+	var parser, <order, <dict, <id, script, argProxies, <callSite;
 
-	*new { |parser, lines, args=nil, script=nil|
+	*new { |parser, lines, args=nil, script=nil, callSite|
 		var i;
 		var o = NodeProxy.new;
 		var aa = args ? [PT.zeroNode];
@@ -302,17 +303,18 @@ PTScriptNet {
 			Dictionary.newFrom([
 				"in", (line: nil, node: aa[0], proxy: i),
 				"out", (line: nil, node: nil, proxy: o),
-		]), PT.randId, script, argProxies).init(lines);
+		]), PT.randId, script, argProxies, nil).init(lines, callSite);
 	}
 
 	// Get a context for evaluation where the previous line has rate r.
-	contextWithItRate { |r|
+	contextWithItRate { |r, id|
 		var ret = (
 			I1: PTArgOp("I1", \i1, argProxies[0].rate),
 			I2: PTArgOp("I2", \i2, argProxies[1].rate),
 			I3: PTArgOp("I3", \i3, argProxies[2].rate),
 			I4: PTArgOp("I4", \i1, argProxies[3].rate),
 			IT: PTArgOp("IT", \in, r),
+			callSite: (net: this, id: id),
 		);
 		if (script != nil, {ret.parent = script.context});
 		^ret;
@@ -328,9 +330,10 @@ PTScriptNet {
 	}
 
 
-	init { |l|
+	init { |l, cs|
 		if (script != nil, {script.refs[id] = this});
 		l.do { |x| this.add(x) };
+		callSite = cs;
 	}
 
 	lines {
@@ -369,7 +372,7 @@ PTScriptNet {
 		var nextEntry = dict[order[index]];
 		var entry = (
 			line: "IT",
-			node: parser.parse("IT", this.contextWithItRate(prevEntry.node.rate)),
+			node: parser.parse("IT", this.contextWithItRate(prevEntry.node.rate, id: id)),
 			proxy: this.newProxy,
 		);
 		entry.proxy.source = { entry.node.instantiate };
@@ -433,7 +436,7 @@ PTScriptNet {
 
 	prepareReplaceOne { |id, line, prevEntry|
 		var oldEntry = dict[id];
-		var newNode = parser.parse(line, context: this.contextWithItRate(prevEntry.node.rate));
+		var newNode = parser.parse(line, context: this.contextWithItRate(prevEntry.node.rate, id: id));
 		var propagate = (newNode.rate != oldEntry.node.rate);
 		var newEntry = (
 			line: line,
@@ -491,12 +494,21 @@ PTScriptNet {
 		);
 	}
 
+	reevaluate { |id|
+		var line = dict[id].line;
+		var index = order.indexOf(id);
+		"REEVALUATION % % %\n".postf(id, index, line);
+		"MY CALL SITE %\n".postf(callSite);
+		^this.prepareReplace(index, line);
+	}
+
 	prepareReplace { |index, line|
 		var i;
 		var id = order[index];
 		var prevEntry = dict[order[index-1]];
 		var preparations = List.new;
 		var p = this.prepareReplaceOne(id, line, prevEntry);
+		var ret;
 		preparations.add(p);
 		i = index + 1;
 		while({ (i < order.size) && (p.propagate) }, {
@@ -505,10 +517,23 @@ PTScriptNet {
 			i = i + 1;
 			preparations.add(p);
 		});
+
+		// If we have changed the output rate of this script, reevaluate the call site instead.
+		if (p.propagate, {
+			"PROPAGATE: CALL SITE IS %\n".postf(callSite);
+			if ( callSite != nil, {
+				preparations.do { |p| p.abort };
+				ret = callSite.net.reevaluate(callSite.id);
+			}, {
+				ret = PTScriptNet.combinePreparations(preparations);
+			});
+		}, {
+			ret = PTScriptNet.combinePreparations(preparations);
+		});
 		// "LAST PREP".postln;
 		// preparations.last.postln;
 		// preparations.postln;
-		^PTScriptNet.combinePreparations(preparations);
+		^ret;
 	}
 
 	replace { |index, line|
@@ -551,8 +576,9 @@ PTScriptOp : PTOp {
 		^net.out.rate;
 	}
 
-	alloc { |args|
-		var net = PTScriptNet.new(parser, script.lines, args, script);
+	alloc { |args, callSite|
+		var net = PTScriptNet.new(parser, script.linesOrDraft, args, script, callSite: callSite);
+		"SCRIPT OP ALLOCED CALL SITE %\n".postf(callSite);
 		^[net];
 	}
 
@@ -567,10 +593,14 @@ PTScriptOp : PTOp {
 }
 
 PTScript {
-	var <size, <lines, <fadeTimes, <refs, <context;
+	var <size, <lines, <fadeTimes, <refs, <context, <linesDraft;
 
 	*new { |size, context|
-		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context);
+		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context, nil);
+	}
+
+	linesOrDraft {
+		^(linesDraft ? lines)
 	}
 
 	add { |line|
@@ -616,15 +646,21 @@ PTScript {
 
 	removeAt { |index|
 		this.validateIndex(index);
+		linesDraft = List.newFrom(lines);
+		linesDraft.removeAt(index);
 		this.makeHappen({ |r| r.prepareRemoveAt(index+1) });
 		lines.removeAt(index);
 		fadeTimes.removeAt(index);
+		linesDraft = nil;
 	}
 
 	replace { |index, line|
 		this.validateIndex(index);
+		linesDraft = List.newFrom(lines);
+		linesDraft[index] = line;
 		this.makeHappen({ |r| r.prepareReplace(index+1, line)});
 		lines[index] = line;
+		linesDraft = nil;
 	}
 
 	setFadeTime { |index, time|
@@ -746,5 +782,6 @@ PT {
 // [x] Full multi-script setup with editing.
 // [x] Script op
 // [ ] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
+//    * The problem is that the "replace entire" operation needs to see the *new version* of the line. Figure out how to put that in the context.
 // [ ] Check for various leaks
 // When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
