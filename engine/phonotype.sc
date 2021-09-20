@@ -185,7 +185,6 @@ PTArgOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		// "it rate is % prevLine is %\n".postf(this.rate, prevLine);
 		^case
 		{this.rate == \audio} {
 			symbol.ar(0)
@@ -199,6 +198,29 @@ PTArgOp : PTOp {
 	}
 }
 
+PTInOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("IN", 0);
+	}
+
+	rate { |args, resources|
+		^\audio;
+	}
+
+	min { |args, resources|
+		^-1;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+		^In.ar(0, 2);
+	}
+}
+
 PTParser {
 	var <ops, constOp;
 
@@ -208,6 +230,7 @@ PTParser {
 
 	*default {
 		^PTParser.new(Dictionary.with(*[
+			"IN" -> PTInOp.new(),
 			"SIN" -> PTOscOp.new("SIN", 1, SinOsc),
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
 			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
@@ -225,12 +248,9 @@ PTParser {
 	}
 
 	parseHelper {|tokens, pos, context|
-		// "parseHelper % % %\n".postf(tokens, pos, it);
-		"HELPER CONTEXT CALLSITE %\n".postf(context.callSite);
 		^case
 		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
-			// "const % at pos %\n".postf(tokens[pos], pos+1);
 			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
@@ -242,7 +262,6 @@ PTParser {
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
-			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
 			p -> PTNode.new(op, myArgs, callSite: context.callSite)
 		}
 		{ops.includesKey(tokens[pos])} {
@@ -254,15 +273,11 @@ PTParser {
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
-			// "new node % args % at pos %\n".postf(op.name, myArgs, p);
 			p -> PTNode.new(op, myArgs, callSite: context.callSite)
 		}
 		{true} {
-			// tokens.post;
 			var c = context;
-			"CONTEXT".postln;
 			while({context != nil},{
-				context.postln;
 				context = context.parent;
 			});
 			Error.new("None of the above ." + tokens[pos] + ".").throw;
@@ -278,16 +293,16 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var parser, <order, <dict, <id, script, argProxies, <callSite;
+	var server, parser, <order, <dict, <id, script, argProxies, <callSite;
 
-	*new { |parser, lines, args=nil, script=nil, callSite|
+	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
-		var o = NodeProxy.new;
+		var o = NodeProxy.new(server);
 		var aa = args ? [PT.zeroNode];
 		var argProxies = List.new;
 		4.do { |i|
 			var a = aa[i];
-			var n = NodeProxy.new;
+			var n = NodeProxy.new(server);
 			if (
 				a != nil,
 				{ n.source = { a.instantiate } },
@@ -298,7 +313,7 @@ PTScriptNet {
 		i = argProxies[0];
 		PTScriptNet.makeOut(o, i.rate);
 		o.set(\in, i);
-		^super.newCopyArgs(parser,
+		^super.newCopyArgs(server, parser,
 			List.newUsing(["in", "out"]),
 			Dictionary.newFrom([
 				"in", (line: nil, node: aa[0], proxy: i),
@@ -321,7 +336,7 @@ PTScriptNet {
 	}
 
 	newProxy { |rate=nil|
-		var ret = NodeProxy.new(rate: rate);
+		var ret = NodeProxy.new(server, rate: rate);
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -421,7 +436,6 @@ PTScriptNet {
 		i = index + 1;
 		while({ (i < order.size) && (p.propagate) }, {
 			p = this.prepareReparse(order[i], p.output);
-			// p.postln;
 			i = i + 1;
 			preparations.add(p);
 		});
@@ -497,8 +511,6 @@ PTScriptNet {
 	reevaluate { |id|
 		var line = dict[id].line;
 		var index = order.indexOf(id);
-		"REEVALUATION % % %\n".postf(id, index, line);
-		"MY CALL SITE %\n".postf(callSite);
 		^this.prepareReplace(index, line);
 	}
 
@@ -513,14 +525,12 @@ PTScriptNet {
 		i = index + 1;
 		while({ (i < order.size) && (p.propagate) }, {
 			p = this.prepareReparse(order[i], p.output);
-			// p.postln;
 			i = i + 1;
 			preparations.add(p);
 		});
 
 		// If we have changed the output rate of this script, reevaluate the call site instead.
 		if (p.propagate, {
-			"PROPAGATE: CALL SITE IS %\n".postf(callSite);
 			if ( callSite != nil, {
 				preparations.do { |p| p.abort };
 				ret = callSite.net.reevaluate(callSite.id);
@@ -530,9 +540,6 @@ PTScriptNet {
 		}, {
 			ret = PTScriptNet.combinePreparations(preparations);
 		});
-		// "LAST PREP".postln;
-		// preparations.last.postln;
-		// preparations.postln;
 		^ret;
 	}
 
@@ -557,10 +564,10 @@ PTScriptNet {
 }
 
 PTScriptOp : PTOp {
-	var parser, script;
+	var server, parser, script;
 
-	*new { |name, nargs, parser, script|
-		^super.newCopyArgs(name, nargs, parser, script);
+	*new { |server, name, nargs, parser, script|
+		^super.newCopyArgs(name, nargs, server, parser, script);
 	}
 
 	min { |args, resources|
@@ -577,8 +584,10 @@ PTScriptOp : PTOp {
 	}
 
 	alloc { |args, callSite|
-		var net = PTScriptNet.new(parser, script.linesOrDraft, args, script, callSite: callSite);
-		"SCRIPT OP ALLOCED CALL SITE %\n".postf(callSite);
+		var net = PTScriptNet.new(
+			server: server, parser: parser,
+			lines: script.linesOrDraft, args: args,
+			script: script, callSite: callSite);
 		^[net];
 	}
 
@@ -605,6 +614,7 @@ PTScript {
 
 	add { |line|
 		var idx = lines.size;
+		"ADDING %\n".postf(line);
 		this.insertPassthrough(idx);
 		this.replace(idx, line);
 	}
@@ -615,6 +625,7 @@ PTScript {
 	}
 
 	insertPassthrough { |index|
+		"INSERTING PASSTHROUGH %\n".postf(index);
 		if (lines.size >= size, {
 			Error.new("Can't insert another line").throw
 		});
@@ -655,6 +666,7 @@ PTScript {
 	}
 
 	replace { |index, line|
+		"REPLACING % %\n".postf(index, line);
 		this.validateIndex(index);
 		linesDraft = List.newFrom(lines);
 		linesDraft[index] = line;
@@ -676,10 +688,10 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var <scripts, parser, main;
+	var server, <scripts, parser, main;
 
-	*new {
-		^super.newCopyArgs(Array.new(numScripts), PTParser.default, nil).init;
+	*new { |server|
+		^super.newCopyArgs(server, Array.new(numScripts), PTParser.default, nil).init;
 	}
 
 	init {
@@ -693,10 +705,11 @@ PT {
 			5.do { |nargs|
 				var name = "$" ++ (i + 1);
 				if (nargs > 0, { name = (name ++ "." ++ nargs) });
-				ctx[name.asSymbol] = PTScriptOp.new(name, nargs, parser, script);
+				ctx[name.asSymbol] = PTScriptOp.new(server, name, nargs, parser, script);
 			}
 		};
-		main = PTScriptNet.new(parser: parser, lines: [], args: [], script: scripts[numScripts-1]);
+		main = PTScriptNet.new(server: server, parser: parser, lines: [],
+			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
 	}
 
 	replace { |script, index, line|
@@ -749,9 +762,6 @@ PT {
 				// pass
 			}
 			{true} {
-				"ADDING ".post;
-				curScript.postln;
-				l.postln;
 				this.add(curScript, l);
 			};
 		}
@@ -774,7 +784,74 @@ PT {
 
 }
 
+// norns glue
+Engine_Phonotype : CroneEngine {
+	classvar luaOscPort = 10111;
 
+	var pt; // a Phonotype
+	*new { arg context, doneCallback;
+		^super.new(context, doneCallback);
+	}
+
+
+
+	alloc {
+		var luaOscAddr = NetAddr("localhost", luaOscPort);
+		var executeAndReport = { |i, s, f|
+			var e = "";
+			try {
+				f.value;
+			} { |err|
+				e = err.errorString;
+			};
+			// The "/report" message is:
+			// int - request id, the one that made us report on it
+			// int - script that we're reporting about, 0-indexed
+			// string - error, if any
+			// string - current newline-separated lines of that script
+			luaOscAddr.sendMsg("/report", i, s, e, "".catList(pt.scripts[s].lines.collect({ |l| l ++ "\n" })));
+		};
+		//  :/
+		pt = PT.new(context.server);
+
+
+		this.addCommand("insert_passthrough", "iii", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {pt.insertPassthrough(msg[2].asInt, msg[3].asInt)});
+		});
+
+		this.addCommand("replace", "iiis", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
+				pt.replace(msg[2].asInt, msg[3].asInt, msg[4].asString)
+			});
+		});
+
+		this.addCommand("add", "iis", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
+				pt.add(msg[2].asInt, msg[4].asString)
+			});
+		});
+
+		this.addCommand("remove", "iii", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {pt.removeAt(msg[2].asInt, msg[3].asInt)});
+		});
+
+		this.addCommand("fade_time", "iiif", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
+				pt.setFadeTime(msg[2].asInt, msg[3].asInt, msg[4].asFloat)
+			});
+		});
+
+		this.addCommand("just_report", "ii", { arg msg;
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {});
+		});
+
+		pt.out.play;
+	}
+
+	free {
+		pt.clear;
+	}
+}
 // [x] Each Script keeps track of its Nets in `refs`.
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
 // [x] Give a Net a free method.
