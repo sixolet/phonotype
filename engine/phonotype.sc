@@ -827,7 +827,7 @@ Engine_Phonotype : CroneEngine {
 
 		this.addCommand("add", "iis", { arg msg;
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
-				pt.add(msg[2].asInt, msg[4].asString)
+				pt.add(msg[2].asInt, msg[3].asString)
 			});
 		});
 

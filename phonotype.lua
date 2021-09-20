@@ -26,6 +26,15 @@ function BasicModel:insert_blank(script, idx)
   table.insert(s, idx, "")
 end
 
+function BasicModel:add(script, line)
+  local s = self.scripts[script]
+  if s == nil then
+    s = {}
+    self.scripts[script] = s
+  end
+  s[#s + 1] = line
+end
+
 function BasicModel:script_size(script)
   if self.scripts[script] == nil then
     return 0
@@ -72,12 +81,14 @@ function PTModel:get_if_nil(script)
 end
 
 function PTModel:insert_blank(script, idx)
+  print("insert_passthrough", self.nonce, script-1, idx-1)
   engine.insert_passthrough(self.nonce, script-1, idx-1)
   self.outstanding = self.nonce
   self.nonce = self.nonce + 1
 end
 
 function PTModel:add(script, line)
+  print("add", self.nonce, script-1, line)
   engine.add(self.nonce, script-1, line)
   self.outstanding = self.nonce
   self.nonce = self.nonce + 1
@@ -92,12 +103,14 @@ function PTModel:script_size(script)
 end
 
 function PTModel:replace(script, idx, line)
+  print("replace", self.nonce, script-1, idx-1, line)
   engine.replace(self.nonce, script-1, idx-1, line)
   self.outstanding = self.nonce
   self.nonce = self.nonce + 1
 end
 
 function PTModel:remove(script, idx)
+  print("remove", self.nonce, script-1, idx-1)
   engine.remove(self.nonce, script-1, idx-1)
   self.outstanding = self.nonce
   self.nonce = self.nonce + 1
@@ -177,15 +190,15 @@ function keyboard.char(character)
   if keyboard.alt() or keyboard.ctrl() then
     return
   end
-  print("ADDING .", character, ".")
+  -- print("ADDING .", character, ".")
   editing = string.insert(editing, character:upper(), edit_col)
   edit_col = edit_col + 1
   redraw()
 end
 
 function keyboard.code(key, value)
-  print("KEY", key)
-  print("POS", edit_col)
+  -- print("KEY", key)
+  -- print("POS", edit_col)
   if value == 1 or value == 2 then -- 1 is down, 2 is held, 0 is release
     if key == "BACKSPACE" then
       if editing:len() == 0 or edit_col == 1 then
@@ -211,7 +224,7 @@ function keyboard.code(key, value)
         model:insert_blank(editing_script, edit_row)
         editing = model:get(editing_script, edit_row)
       elseif edit_row > model:script_size(editing_script) then
-        model:add(editing_script, edit_row, editing)
+        model:add(editing_script, editing)
       else
         model:replace(editing_script, edit_row, editing)
       end
@@ -233,7 +246,7 @@ function keyboard.code(key, value)
 end
 
 function osc_in(path, args, from)
-  print("OMG", path, args, from)  
+  print("osc", path, args[1], args[2], args[3], args[4], from)  
   if path == "/report" then
     local nonce = args[1]
     local script_num = args[2] + 1
