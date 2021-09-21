@@ -275,12 +275,15 @@ PTParser {
 			});
 			p -> PTNode.new(op, myArgs, callSite: context.callSite)
 		}
+		{tokens[pos] == ""} {
+			this.parseHelper(tokens, pos+1, context)
+		}
 		{true} {
 			var c = context;
 			while({context != nil},{
 				context = context.parent;
 			});
-			Error.new("None of the above ." + tokens[pos] + ".").throw;
+			Error.new("Unknown token: " ++ tokens[pos] ++ ".").throw;
 		};
 	}
 }
@@ -555,8 +558,11 @@ PTScriptNet {
 	}
 
 	free {
-		// clear all my proxies
-		dict.do { |entry| entry.proxy.clear };
+		// clear all my proxies, free all my nodes
+		dict.do { |entry|
+			entry.proxy.clear
+			entry.node.free;
+		};
 		// remove myself from ref tracking.
 		if (script != nil, {script.refs.removeAt(id)});
 	}
