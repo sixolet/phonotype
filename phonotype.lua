@@ -159,6 +159,17 @@ function init()
   print("the end and the beginning they are the same.")
 end
 
+function spaces_at_end(s)
+  if s == nil then
+    return 0
+  end
+  local m = string.match(s, " +$")
+  if m == nil then
+    return 0
+  end
+  return string.len(m)
+end
+
 function redraw()
   screen.clear()
   screen.level(16)
@@ -179,7 +190,7 @@ function redraw()
   screen.level(1)
   screen.blend_mode(8)
   local up_to_cursor = string.sub(editing, 1, edit_col-1)
-  screen.rect(screen.text_extents(up_to_cursor) + 10, 56, 5, 8)
+  screen.rect(screen.text_extents(up_to_cursor) + spaces_at_end(up_to_cursor) * 4 + 10, 56, 5, 8)
   screen.fill()
   screen.rect(0, 8*(edit_row-1), 128, 8)
   screen.fill()
@@ -230,18 +241,23 @@ function keyboard.code(key, value)
       end
     elseif key == "UP" then
       if edit_row == 1 then
-        return
+        -- pass
+      else
+        edit_row = edit_row - 1
+        editing = model:get(editing_script, edit_row)
+        edit_col = string.len(editing) + 1
       end
-      edit_row = edit_row - 1
-      editing = model:get(editing_script, edit_row)
     elseif key == "DOWN" then
       if edit_row > model:script_size(editing_script) then
-        return
+        edit_row = model:script_size(editing_script) + 1
+      else
+        edit_row = edit_row + 1
+        editing = model:get(editing_script, edit_row)
+        edit_col = string.len(editing) + 1
       end
-      edit_row = edit_row + 1
-      editing = model:get(editing_script, edit_row)
     end
   end
+  print("Now editing row:", edit_row, "col:", edit_col)
   redraw()
 end
 
