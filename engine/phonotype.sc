@@ -241,9 +241,10 @@ PTParser {
 	}
 
 	parse { |str, context=nil|
+		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var tokens = s.split($ );
-		var a = this.parseHelper(tokens, 0, context);
+		var a = this.parseHelper(tokens, 0, ctx);
 		^a.value;
 	}
 
@@ -296,7 +297,7 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var server, parser, <order, <dict, <id, script, argProxies, <callSite;
+	var server, parser, <order, <dict, <id, <script, <argProxies, <callSite;
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
@@ -559,8 +560,9 @@ PTScriptNet {
 
 	free {
 		// clear all my proxies, free all my nodes
+		this.out.source = { 0 };
 		dict.do { |entry|
-			entry.proxy.clear
+			entry.proxy.clear;
 			entry.node.free;
 		};
 		// remove myself from ref tracking.
@@ -686,6 +688,12 @@ PTScript {
 		refs.do { |r| r.setFadeTime(index+1, time) };
 		fadeTimes[index] = time;
 	}
+
+	clear {
+		lines.size.reverseDo { |i|
+			this.removeAt(i);
+		};
+	}
 }
 
 PT {
@@ -694,7 +702,7 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, parser, main;
+	var server, <scripts, parser, <main;
 
 	*new { |server|
 		^super.newCopyArgs(server, Array.new(numScripts), PTParser.default, nil).init;
@@ -749,17 +757,17 @@ PT {
 	}
 
 	clear {
-		scripts.reverseDo { |script|
-			script.lines.size.reverseDo { |i|
-				script.removeAt(i);
-			};
-		}
+		main.free;
+		scripts.do { |s|
+			s.clear;
+		};
 	}
 
 	load { |str|
 		var lines = str.split($\n);
 		var curScript = 0;
 		this.clear();
+		this.init();
 		lines.do { |l|
 			case {l[0] == $#} {
 				curScript = (l[1..].asInteger - 1);

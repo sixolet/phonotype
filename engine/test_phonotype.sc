@@ -3,7 +3,7 @@ TestPT : UnitTest {
 	var p;
 
 	setUp {
-		p = PT.new;
+		p = PT.new(Server.default);
 	}
 
 	tearDown {
@@ -101,7 +101,7 @@ TestPTScriptNet : UnitTest {
 	setUp {
         // this will be called before each test
 		parser = PTParser.default;
-		net = PTScriptNet.new(parser, [], [parser.parse("SIN 440", Dictionary.new)]);
+		net = PTScriptNet.new(Server.default, parser, [], [parser.parse("SIN 440")]);
     }
 
 	test_initializationToSin {
@@ -146,7 +146,7 @@ TestPTScriptNet : UnitTest {
 
 	test_replacePropagates {
 		var p;
-		net = PTScriptNet.new(parser, ["SIN 1", "* IT SIN 2"], [parser.parse("SIN 440")]);
+		net = PTScriptNet.new(Server.default, parser, ["SIN 1", "* IT SIN 2"], [parser.parse("SIN 440")]);
 		this.assertEquals(net.out.rate, \control);
 		p = net.prepareReplace(1, "SIN 440");
 		this.assert(p.propagate);
@@ -159,7 +159,7 @@ TestPTScriptNet : UnitTest {
 	test_replaceFails {
 		var p;
 		var e;
-		net = PTScriptNet.new(parser, ["SIN 1", "* IT SIN 2"], [parser.parse("SIN 440")]);
+		net = PTScriptNet.new(Server.default, parser, ["SIN 1", "* IT SIN 2"], [parser.parse("SIN 440")]);
 		this.assertEquals(net.out.rate, \control);
 		try {
 			p = net.prepareReplace(1, "WOW BAD");
