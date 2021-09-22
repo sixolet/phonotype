@@ -91,6 +91,21 @@ middle of your chain.
 
 Theoretical. I have not tried it. It might work.
 
+## Scripts
+
+You call a script by prepending its number with a `$` (and no space). If you
+want to pass arguments, put a `.`, and the the number of arguments you want to
+pass. For example:
+
+```
+$1.3 IT SIN 1 4
+```
+
+Calls script 1 with 3 arguments, namely `IT`, `SIN 1`, and `4`.
+
+Within script 1, those are available as `I1, `I2`, and `I3`. The first input is
+also available on `IT` of the first line in the script.
+
 ## Misc
 
 `PI` - 0 - Pi.
