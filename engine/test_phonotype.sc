@@ -24,6 +24,17 @@ SIN 440
 		);
 	}
 
+	test_tooManyArgs {
+		var error = nil;
+		self.assertException( {
+			p.load("
+#9
+SIN 440 220
+"
+			);
+		});
+	}
+
 	test_setFadeTime {
 		p.load("
 #1

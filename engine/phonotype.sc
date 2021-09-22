@@ -295,6 +295,12 @@ PTParser {
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var tokens = s.split($ );
 		var a = this.parseHelper(tokens, 0, ctx);
+		var end = a.key;
+		while({end < tokens.size}, {
+			if (tokens[end] != "", {
+				Error.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
+			});
+		});
 		^a.value;
 	}
 
