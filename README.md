@@ -61,6 +61,25 @@ Each is listed as `NAME` - number of args - description
 1. Frequency
 2. Width, from 0 to 1, saw to triangle to ramp.
 
+## Filters
+
+`LPF` - 2 - Low pass filter
+
+`HPF` - 2 - High pass filter
+
+`BPF` - 2 - Band pass filter
+
+Basic.
+
+1. Signal to filter
+2. Cutoff frequency. Careful with very low values.
+
+`MOOG` - 3 - Moog emulation filter
+
+1. Signal to filter
+2. Cutoff frequency
+3. Resonance. Zero to 4.
+
 ## Busses
 
 `IT` - 0 - The previous line
@@ -82,3 +101,13 @@ Utility constant.
 
 Literal `0` is considered "control-rate" by PHONOTYPE and cannot be output;
 `SILENCE` is an audio-rate version you can have as your output.
+
+`SCL` - 3 - Scale
+
+Do our best to scale the input to the given range. Note that some estimates of
+mins and maxes of signals are approximate, so this won't guarantee all signals
+in range.
+
+1. Signal to scale
+2. New min. Must be constant.
+3. New max. Must be constant. 

@@ -46,6 +46,13 @@ PTNode {
 		^op.max(args, resources);
 	}
 
+	constant {
+		if (this.min != this.max, {
+			Error.new("Expected constant, got " ++ op.name);
+		});
+		^this.min;
+	}
+
 	rate {
 		^op.rate(args, resources);
 	}
@@ -140,25 +147,38 @@ PTOscOp : PTOp {
 }
 
 // An audio-rate zero
-PTSilenceOp : PTOp {
+PTSilenceOp : PTConst {
 	*new {
-		^super.newCopyArgs("SILENCE", 0);
-	}
-
-	instantiate { |args, resources|
-		^0;
-	}
-
-	min { |args, resources|
-		^0;
-	}
-
-	max { |args, resources|
-		^0;
+		^super.newCopyArgs("SILENCE", 0, 0);
 	}
 
 	rate { |args, resources|
 		^\audio;
+	}
+}
+
+PTFilterOp : PTOp {
+	var af, kf;
+
+	*new { |name, nargs, af, kf|
+		^super.newCopyArgs(name, nargs, af, kf);
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^switch(this.rate(args),
+			\audio, {af.value(*iargs)},
+			\control, {kf.value(*iargs)},
+			{af.value(*iargs)}
+		);
 	}
 }
 
@@ -269,6 +289,35 @@ PTInOp : PTOp {
 	}
 }
 
+PTScaleOp : PTOp {
+	*new {
+		^super.newCopyArgs("SCL", 3);
+	}
+
+	min { |args, resources|
+		^args[1].min;
+	}
+
+	max { |args, resources|
+		^args[2].max;
+	}
+
+	instantiate { |args, resources|
+		var newMin = args[1].constant;
+		var newMax = args[2].constant;
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+
+		if (newMin >= newMax, {
+			Error.new("Min greater than max").throw;
+		});
+		if (oldMin >= oldMax, {
+			Error.new("Signal is constant or bad range data").throw;
+		});
+		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin)) * (newMax - newMin) + newMin;
+	}
+}
+
 PTParser {
 	var <ops, constOp;
 
@@ -284,6 +333,26 @@ PTParser {
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
 			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
 			"SAW" -> PTOscOp.new("SAW", 1, Saw),
+
+			"LPF" -> PTFilterOp.new("LPF", 2,
+				{ |s, f| LPF.ar(s, f)},
+				{ |s, f| LPF.kr(s, f)},
+			),
+			"BPF" -> PTFilterOp.new("BPF", 2,
+				{ |s, f| BPF.ar(s, f)},
+				{ |s, f| BPF.kr(s, f)},
+			),
+			"HPF" -> PTFilterOp.new("HPF", 2,
+				{ |s, f| HPF.ar(s, f)},
+				{ |s, f| HPF.kr(s, f)},
+			),
+			"MOOG" -> PTFilterOp.new("MOOG", 3,
+				{ |s, f, r| MoogFF.ar(s, f, r)},
+				{ |s, f, r| MoogFF.kr(s, f, r)},
+			),
+
+			"SCL" -> PTScaleOp.new,
+
 			"SILENCE" -> PTSilenceOp.new,
 			"+" -> PTPlusOp.new("+", 2),
 			"*" -> PTTimesOp.new(),

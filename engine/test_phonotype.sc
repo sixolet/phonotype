@@ -24,15 +24,31 @@ SIN 440
 		);
 	}
 
+	test_sclOp {
+		p.load("
+#1
+SCL TRI I1 0 5
+#9
+SIN 440
+* IT $1.1 0.5
+"
+		);
+		this.assertEquals(p.scripts[0].refs.size, 1);
+		p.scripts[0].refs.do { |r|
+			this.assertEquals(r[1].node.min, 0);
+			this.assertEquals(r[1].node.max, 5);
+		};
+	}
+
 	test_tooManyArgs {
 		var error = nil;
-		self.assertException( {
+		this.assertException( {
 			p.load("
 #9
 SIN 440 220
 "
 			);
-		});
+		}, Error);
 	}
 
 	test_setFadeTime {

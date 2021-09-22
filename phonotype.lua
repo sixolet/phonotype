@@ -257,6 +257,14 @@ function keyboard.code(key, value)
         editing = model:get(editing_script, edit_row)
         edit_col = string.len(editing) + 1
       end
+    elseif string.len(key) == 2 and string.sub(key, 1, 1) == "F" then
+      local s = tonumber(string.sub(key, 2, 2))
+      if s ~= nil then
+        editing_script = s
+        edit_row = 1
+        editing = model:get(editing_script, edit_row)
+        edit_col = string.len(editing) + 1
+      end
     end
   end
   print("Now editing row:", edit_row, "col:", edit_col)
