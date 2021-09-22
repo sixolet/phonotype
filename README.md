@@ -103,7 +103,7 @@ $1.3 IT SIN 1 4
 
 Calls script 1 with 3 arguments, namely `IT`, `SIN 1`, and `4`.
 
-Within script 1, those are available as `I1, `I2`, and `I3`. The first input is
+Within script 1, those are available as `I1`, `I2`, and `I3`. The first input is
 also available on `IT` of the first line in the script.
 
 ## Misc
