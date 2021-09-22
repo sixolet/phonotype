@@ -17,7 +17,7 @@ PTOp {
 	rate { |args, resources|
 		var ret = \control;
 		args.do({ |x|
-			if (x.rate == \audio, {ret = \audio}, {});
+			if (x.rate == \audio, {ret = \audio});
 		});
 		^ret;
 	}
@@ -67,7 +67,7 @@ PTNode {
 }
 
 
-PTConst : PTOp {
+PTLiteral : PTOp {
 
 	*new{
 		^super.newCopyArgs("", "1");
@@ -87,6 +87,31 @@ PTConst : PTOp {
 
 	instantiate { |args, resources|
 		^args[0];
+	}
+}
+
+PTConst : PTOp {
+
+	var value;
+
+	*new { |name, value|
+		^super.newCopyArgs(name, 0, value);
+	}
+
+	min { |args, resources|
+		^value;
+	}
+
+	max { |args, resources|
+		^value;
+	}
+
+	rate { |args, resources|
+		^\control;
+	}
+
+	instantiate { |args, resources|
+		^value;
 	}
 }
 
@@ -111,6 +136,29 @@ PTOscOp : PTOp {
 	rate { |args, resources|
 		// Assume the first arg is frequency.
 		^if(args[0].max > 10, { \audio }, { \control });
+	}
+}
+
+// An audio-rate zero
+PTSilenceOp : PTOp {
+	*new {
+		^super.newCopyArgs("SILENCE", 0);
+	}
+
+	instantiate { |args, resources|
+		^0;
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^0;
+	}
+
+	rate { |args, resources|
+		^\audio;
 	}
 }
 
@@ -225,16 +273,18 @@ PTParser {
 	var <ops, constOp;
 
 	*new { |ops|
-		^super.newCopyArgs(ops, PTConst.new());
+		^super.newCopyArgs(ops, PTLiteral.new());
 	}
 
 	*default {
 		^PTParser.new(Dictionary.with(*[
 			"IN" -> PTInOp.new(),
+			"PI" -> PTConst.new("PI", pi),
 			"SIN" -> PTOscOp.new("SIN", 1, SinOsc),
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
 			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
 			"SAW" -> PTOscOp.new("SAW", 1, Saw),
+			"SILENCE" -> PTSilenceOp.new,
 			"+" -> PTPlusOp.new("+", 2),
 			"*" -> PTTimesOp.new(),
 		]));
@@ -620,11 +670,11 @@ PTScript {
 		^(linesDraft ? lines)
 	}
 
-	add { |line|
+	add { |line, topLevel=false|
 		var idx = lines.size;
 		"ADDING %\n".postf(line);
 		this.insertPassthrough(idx);
-		this.replace(idx, line);
+		this.replace(idx, line, topLevel);
 	}
 
 	validateIndex { |index|
@@ -647,10 +697,13 @@ PTScript {
 		fadeTimes.insert(index, 0.01);
 	}
 
-	makeHappen { |f|
+	makeHappen { |f, topLevel|
 		var preparations = List.new;
 		try {
 			refs.do { |r| preparations.add(f.value(r)) };
+			if (topLevel && (preparations.select({|p| p.propagate}).size > 0), {
+				Error.new("Output must be audio").throw;
+			});
 		} { |err|
 			preparations.do { |p|
 				p.abort;
@@ -663,22 +716,22 @@ PTScript {
 		};
 	}
 
-	removeAt { |index|
+	removeAt { |index, topLevel=false|
 		this.validateIndex(index);
 		linesDraft = List.newFrom(lines);
 		linesDraft.removeAt(index);
-		this.makeHappen({ |r| r.prepareRemoveAt(index+1) });
+		this.makeHappen({ |r| r.prepareRemoveAt(index+1) }, topLevel);
 		lines.removeAt(index);
 		fadeTimes.removeAt(index);
 		linesDraft = nil;
 	}
 
-	replace { |index, line|
+	replace { |index, line, topLevel=false|
 		"REPLACING % %\n".postf(index, line);
 		this.validateIndex(index);
 		linesDraft = List.newFrom(lines);
 		linesDraft[index] = line;
-		this.makeHappen({ |r| r.prepareReplace(index+1, line)});
+		this.makeHappen({ |r| r.prepareReplace(index+1, line)}, topLevel);
 		lines[index] = line;
 		linesDraft = nil;
 	}
@@ -727,7 +780,7 @@ PT {
 	}
 
 	replace { |script, index, line|
-		scripts[script].replace(index, line);
+		scripts[script].replace(index, line, topLevel: true);
 	}
 
 	insertPassthrough { |script, index|
@@ -735,11 +788,11 @@ PT {
 	}
 
 	removeAt { |script, index|
-		scripts[script].removeAt(index);
+		scripts[script].removeAt(index, topLevel: true);
 	}
 
 	add { |script, line|
-		scripts[script].add(line);
+		scripts[script].add(line, topLevel: true);
 	}
 
 	printOn { | stream |
@@ -786,7 +839,7 @@ PT {
 	}
 
 	*zeroNode {
-		PTNode.new(PTConst.new(), [0])
+		PTNode.new(PTLiteral.new(), [0])
 	}
 
 	*randId {

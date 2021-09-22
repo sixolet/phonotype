@@ -236,6 +236,8 @@ function keyboard.code(key, value)
         editing = model:get(editing_script, edit_row)
       elseif edit_row > model:script_size(editing_script) then
         model:add(editing_script, editing)
+      elseif editing == "" then
+        model:remove(editing_script, edit_row)
       else
         model:replace(editing_script, edit_row, editing)
       end

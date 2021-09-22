@@ -76,6 +76,48 @@ SIN 440
 		};
 	}
 
+	test_replaceFailsChangesRateOfWholeThing {
+		var done = false;
+		var error = nil;
+		p.load("
+#9
+SIN 440
+* IT 0.5
+"
+		);
+		try {
+		  p.replace(8, 1, "SIN 0.5");
+		} { |err|
+			error = err;
+		};
+		this.assert(error != nil);
+		SystemClock.sched(0.2, {done = true});
+		this.wait({done}, "waiting for some time to let cleanup happen", 1);
+		this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.5"]));
+	}
+
+	test_replaceFailsChangesRateOfWholeThing2 {
+		var done = false;
+		var error = nil;
+		p.load("
+#9
+SIN 440
+* IT 0.5
+"
+		);
+		try {
+		  p.replace(8, 1, "0");
+		} { |err|
+			"THE ERROR IS".postln;
+			err.errorString.postln;
+			error = err;
+		};
+		this.assert(error != nil);
+		SystemClock.sched(0.2, {done = true});
+		this.wait({done}, "waiting for some time to let cleanup happen", 1);
+		this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.5"]));
+	}
+
 	test_replaceDoesntLeakRefs {
 		var done = false;
 		p.load("
