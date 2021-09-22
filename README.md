@@ -16,7 +16,7 @@ Like Teletype, PHONOTYPE is a prefix programming language. For example:
 
 ```
 + 1 * 2 3
-``
+```
 
 Is a statement that yields the sum of 1 and the product of 2 and 3: 7.
 
