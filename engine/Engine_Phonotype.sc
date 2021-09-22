@@ -295,24 +295,31 @@ PTScaleOp : PTOp {
 	}
 
 	min { |args, resources|
-		^args[1].min;
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		if (oldMin >= oldMax, {
+			Error.new("Signal is constant or bad range data").throw;
+		});
+		^args[1].constant;
 	}
 
 	max { |args, resources|
-		^args[2].max;
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		if (oldMin >= oldMax, {
+			Error.new("Signal is constant or bad range data").throw;
+		});
+		^args[2].constant;
 	}
 
 	instantiate { |args, resources|
-		var newMin = args[1].constant;
-		var newMax = args[2].constant;
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
+		var newMin = args[1].constant;
+		var newMax = args[2].constant;
 
 		if (newMin >= newMax, {
 			Error.new("Min greater than max").throw;
-		});
-		if (oldMin >= oldMax, {
-			Error.new("Signal is constant or bad range data").throw;
 		});
 		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin)) * (newMax - newMin) + newMin;
 	}
@@ -579,6 +586,9 @@ PTScriptNet {
 
 	prepareReplaceOne { |id, line, prevEntry|
 		var oldEntry = dict[id];
+		// TODO: This might leak if a node is alloced but then we raise an exception before storing it
+		// so it can be freed. Consider how to maybe tie any alloc'd resources to the exception so they
+		// can be properly freed.
 		var newNode = parser.parse(line, context: this.contextWithItRate(prevEntry.node.rate, id: id));
 		var propagate = (newNode.rate != oldEntry.node.rate);
 		var newEntry = (
