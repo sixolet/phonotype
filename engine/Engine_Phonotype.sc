@@ -279,13 +279,13 @@ PTArgOp : PTOp {
 	instantiate { |args, resources|
 		^case
 		{this.rate == \audio} {
-			symbol.ar(0)
+			symbol.ar([0,0])
 		}
 		{this.rate == \control} {
-			symbol.kr(0)
+			symbol.kr([0,0])
 		}
 		{true} {
-			symbol.kr(0)
+			symbol.kr([0,0])
 		}
 	}
 }
@@ -310,6 +310,35 @@ PTInOp : PTOp {
 
 	instantiate { |args, resources|
 		^In.ar(0, 2);
+	}
+}
+
+PTLROp : PTOp {
+
+	*new {
+		^super.newCopyArgs("LR", 2);
+	}
+
+	check { |args|
+		if (args[0].rate != args[1].rate, {
+			PTCheckError.new("LR args must be the same rate").throw;
+		});
+	}
+
+	min { |args, resources|
+		^if(args[0].min < args[1].min, {args[0].min}, {args[1].min});
+	}
+
+	max { |args, resources|
+		^if(args[0].max < args[1].max, {args[0].max}, {args[1].max});
+	}
+
+	*mono { |ugen|
+		^if (ugen.size == 0, {ugen}, {ugen.sum / ugen.size});
+	}
+
+	instantiate { |args, resources|
+		^[PTLROp.mono(args[0].instantiate), PTLROp.mono(args[1].instantiate)];
 	}
 }
 
@@ -375,6 +404,8 @@ PTParser {
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
 			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
 			"SAW" -> PTOscOp.new("SAW", 1, Saw),
+
+			"LR" -> PTLROp.new,
 
 			"LPF" -> PTFilterOp.new("LPF", 2,
 				{ |s, f| LPF.ar(s, f)},
@@ -480,21 +511,26 @@ PTScriptNet {
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
-		var o = NodeProxy.new(server);
+		var o;
 		var aa = args ? [PT.zeroNode];
 		var argProxies = List.new;
 		4.do { |i|
 			var a = aa[i];
-			var n = NodeProxy.new(server);
+			var n = NodeProxy.new(
+				server,
+				rate: if(a != nil, {a.rate}, {\control}),
+				numChannels: if(a != nil, {2}, {1}));
 			if (
 				a != nil,
-				{ n.source = { a.instantiate } },
+				{ n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) } },
 				{ n.source = {0.0} }
 			);
 			argProxies.add(n);
 		};
 		i = argProxies[0];
+		o = NodeProxy.new(server, i.rate, numChannels: 2);
 		PTScriptNet.makeOut(o, i.rate);
+		"o.rate: %\n".postf(o.rate);
 		o.set(\in, i);
 		^super.newCopyArgs(server, parser,
 			List.newUsing(["in", "out"]),
@@ -502,6 +538,13 @@ PTScriptNet {
 				"in", (line: nil, node: aa[0], proxy: i),
 				"out", (line: nil, node: nil, proxy: o),
 		]), PT.randId, script, argProxies, nil).init(lines, callSite);
+	}
+
+	*maybeMakeStereo { |ugen|
+		"Makin % stereo?\n".postf(ugen);
+		^if (ugen.size == 0, {
+			ugen!2
+		}, {ugen});
 	}
 
 	// Get a context for evaluation where the previous line has rate r.
@@ -519,7 +562,8 @@ PTScriptNet {
 	}
 
 	newProxy { |rate=nil|
-		var ret = NodeProxy.new(server, rate: rate);
+		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
+		"new % proxy\n".postf(rate);
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -550,10 +594,10 @@ PTScriptNet {
 
 	*makeOut { |out, rate|
 		case { rate == \audio } {
-			out.source = { \in.ar() };
+			out.source = { \in.ar([0, 0]) };
 		}
 		{ rate == \control } {
-			out.source = { \in.kr() };
+			out.source = { \in.kr([0, 0]) };
 		}
 		{ true } {
 			Error.new("Unknown output rate for script").throw;
@@ -571,9 +615,9 @@ PTScriptNet {
 		var entry = (
 			line: "IT",
 			node: parser.parse("IT", this.contextWithItRate(prevEntry.node.rate, id: id)),
-			proxy: this.newProxy,
+			proxy: this.newProxy(prevEntry.node.rate),
 		);
-		entry.proxy.source = { entry.node.instantiate };
+		entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.node.instantiate) };
 		prevEntry.proxy <>> entry.proxy <>> nextEntry.proxy;
 		dict[id] = entry;
 		order.insert(index, id);
@@ -646,7 +690,7 @@ PTScriptNet {
 
 		^(
 			commit: {
-				newEntry.proxy.source = { newEntry.node.instantiate };
+				newEntry.proxy.source = { PTScriptNet.maybeMakeStereo(newEntry.node.instantiate) };
 				if (propagate, {
 					newEntry.proxy.fadeTime = oldEntry.proxy.fadeTime;
 					newEntry.proxy.set(\in, prevEntry.proxy);
@@ -1061,13 +1105,14 @@ Engine_Phonotype : CroneEngine {
 		pt.clear;
 	}
 }
+
 // [x] Each Script keeps track of its Nets in `refs`.
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
 // [x] Give a Net a free method.
 // [x] When a Script line is edited, make the same edits to each Net. First do all Typechecks, then do all Commits.
 // [x] Full multi-script setup with editing.
 // [x] Script op
-// [ ] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
+// [x] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
 //    * The problem is that the "replace entire" operation needs to see the *new version* of the line. Figure out how to put that in the context.
-// [ ] Check for various leaks
+// [x] Check for various leaks
 // When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
