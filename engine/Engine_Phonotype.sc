@@ -1,10 +1,24 @@
 
+CheckError : Error {
+	errorString {
+		^what
+	}
+}
+
+ParseError : Error {
+	errorString {
+		^what
+	}
+}
+
 PTOp {
 	var <name, <nargs;
 
 	*new { |name, nargs|
 		^super.newCopyArgs(name, nargs);
 	}
+
+	check { |args| }
 
 	min { |args, resources|
 		^-1;
@@ -35,6 +49,14 @@ PTOp {
 PTNode {
 	var <op, <args, <resources;
 	*new { |op, args, callSite=nil|
+		try {
+			op.check(args);
+		} { |e|
+			args.do { |a|
+				a.free;
+			};
+			e.throw;
+		};
 		^super.newCopyArgs(op, args, op.alloc(args, callSite));
 	}
 
@@ -46,11 +68,8 @@ PTNode {
 		^op.max(args, resources);
 	}
 
-	constant {
-		if (this.min != this.max, {
-			Error.new("Expected constant, got " ++ op.name);
-		});
-		^this.min;
+	isConstant {
+		^(this.min == this.max);
 	}
 
 	rate {
@@ -294,13 +313,27 @@ PTScaleOp : PTOp {
 		^super.newCopyArgs("SCL", 3);
 	}
 
+	check { |args|
+		var newMin = args[1].min;
+		var newMax = args[2].min;
+		if (args[1].isConstant.not, {
+			CheckError.new("Expected constant, got " ++ args[1].op.name).throw;
+		});
+		if (args[2].isConstant.not, {
+			CheckError.new("Expected constant, got " ++ args[2].op.name).throw;
+		});
+		if (newMin >= newMax, {
+			CheckError.new("Min greater than max").throw;
+		});
+	}
+
 	min { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
 		if (oldMin >= oldMax, {
 			Error.new("Signal is constant or bad range data").throw;
 		});
-		^args[1].constant;
+		^args[1].min;
 	}
 
 	max { |args, resources|
@@ -309,18 +342,15 @@ PTScaleOp : PTOp {
 		if (oldMin >= oldMax, {
 			Error.new("Signal is constant or bad range data").throw;
 		});
-		^args[2].constant;
+		^args[2].max;
 	}
 
 	instantiate { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
-		var newMin = args[1].constant;
-		var newMax = args[2].constant;
+		var newMin = args[1].min;
+		var newMax = args[2].min;
 
-		if (newMin >= newMax, {
-			Error.new("Min greater than max").throw;
-		});
 		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin)) * (newMax - newMin) + newMin;
 	}
 }
@@ -391,7 +421,13 @@ PTParser {
 			var p = pos + 1;
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
-				var a = this.parseHelper(tokens, p, context);
+				var a;
+				try {
+					a = this.parseHelper(tokens, p, context);
+				} { |e|
+					myArgs.do { |a| a.free };
+					e.throw;
+				};
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
@@ -402,7 +438,13 @@ PTParser {
 			var p = pos + 1;
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
-				var a = this.parseHelper(tokens, p, context);
+				var a;
+				try {
+					a = this.parseHelper(tokens, p, context);
+				} { |e|
+					myArgs.do { |a| a.free };
+					e.throw;
+				};
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
