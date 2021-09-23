@@ -1,11 +1,16 @@
-
-CheckError : Error {
+PTCheckError : Error {
 	errorString {
 		^what
 	}
 }
 
-ParseError : Error {
+PTParseError : Error {
+	errorString {
+		^what
+	}
+}
+
+PTEditError : Error {
 	errorString {
 		^what
 	}
@@ -314,34 +319,34 @@ PTScaleOp : PTOp {
 	}
 
 	check { |args|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
 		var newMin = args[1].min;
 		var newMax = args[2].min;
 		if (args[1].isConstant.not, {
-			CheckError.new("Expected constant, got " ++ args[1].op.name).throw;
+			PTCheckError.new("Expected constant, got " ++ args[1].op.name).throw;
 		});
 		if (args[2].isConstant.not, {
-			CheckError.new("Expected constant, got " ++ args[2].op.name).throw;
+			PTCheckError.new("Expected constant, got " ++ args[2].op.name).throw;
+		});
+		if (oldMin >= oldMax, {
+			PTCheckError.new("Signal is constant or bad range data").throw;
 		});
 		if (newMin >= newMax, {
-			CheckError.new("Min greater than max").throw;
+			PTCheckError.new("Min greater than max").throw;
 		});
 	}
 
 	min { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
-		if (oldMin >= oldMax, {
-			Error.new("Signal is constant or bad range data").throw;
-		});
+
 		^args[1].min;
 	}
 
 	max { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
-		if (oldMin >= oldMax, {
-			Error.new("Signal is constant or bad range data").throw;
-		});
 		^args[2].max;
 	}
 
@@ -404,7 +409,7 @@ PTParser {
 		var end = a.key;
 		while({end < tokens.size}, {
 			if (tokens[end] != "", {
-				Error.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
+				PTParseError.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
 			});
 		});
 		^a.value;
@@ -412,7 +417,7 @@ PTParser {
 
 	parseHelper {|tokens, pos, context|
 		^case
-		{pos >= tokens.size} { Error.new("Expected token; got EOF").throw }
+		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
 			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()], callSite: context.callSite)
 		}
@@ -458,7 +463,7 @@ PTParser {
 			while({context != nil},{
 				context = context.parent;
 			});
-			Error.new("Unknown token: " ++ tokens[pos] ++ ".").throw;
+			PTParseError.new("Unknown token: " ++ tokens[pos] ++ ".").throw;
 		};
 	}
 }
@@ -805,14 +810,14 @@ PTScript {
 	}
 
 	validateIndex { |index|
-		if (index < 0, { Error.new("Index must be greater than zero").throw });
-		if (index > lines.size, { Error.new("Index must be less than the current number of lines").throw });
+		if (index < 0, { PTEditError.new("Index must be greater than zero").throw });
+		if (index > lines.size, { PTEditError.new("Index must be less than the current number of lines").throw });
 	}
 
 	insertPassthrough { |index|
 		"INSERTING PASSTHROUGH %\n".postf(index);
 		if (lines.size >= size, {
-			Error.new("Can't insert another line").throw
+			PTEditError.new("Can't insert another line").throw
 		});
 		this.validateIndex(index);
 		// Inserting a passthrough should never fail.
@@ -829,7 +834,7 @@ PTScript {
 		try {
 			refs.do { |r| preparations.add(f.value(r)) };
 			if (topLevel && (preparations.select({|p| p.propagate}).size > 0), {
-				Error.new("Output must be audio").throw;
+				PTCheckError.new("Output must be audio").throw;
 			});
 		} { |err|
 			preparations.do { |p|
@@ -867,6 +872,10 @@ PTScript {
 		this.validateIndex(index);
 		refs.do { |r| r.setFadeTime(index+1, time) };
 		fadeTimes[index] = time;
+	}
+
+	getFadeTime { |index|
+		^fadeTimes[index];
 	}
 
 	clear {
@@ -936,6 +945,10 @@ PT {
 		scripts[script].setFadeTime(index, time);
 	}
 
+	getFadeTime { |script, index|
+		^scripts[script].getFadeTime(index);
+	}
+
 	clear {
 		main.free;
 		scripts.do { |s|
@@ -991,8 +1004,8 @@ Engine_Phonotype : CroneEngine {
 
 	alloc {
 		var luaOscAddr = NetAddr("localhost", luaOscPort);
-		var executeAndReport = { |i, s, f|
-			var e = "";
+		var executeAndReport = { |i, s, f, msg=nil|
+			var e = nil;
 			try {
 				f.value;
 			} { |err|
@@ -1003,7 +1016,7 @@ Engine_Phonotype : CroneEngine {
 			// int - script that we're reporting about, 0-indexed
 			// string - error, if any
 			// string - current newline-separated lines of that script
-			luaOscAddr.sendMsg("/report", i, s, e, "".catList(pt.scripts[s].lines.collect({ |l| l ++ "\n" })));
+			luaOscAddr.sendMsg("/report", i, s, (e ? msg ? ""), "".catList(pt.scripts[s].lines.collect({ |l| l ++ "\n" })));
 		};
 		//  :/
 		pt = PT.new(context.server);
@@ -1030,9 +1043,11 @@ Engine_Phonotype : CroneEngine {
 		});
 
 		this.addCommand("fade_time", "iiif", { arg msg;
+			var prevFadeTime = pt.getFadeTime(msg[2].asInt, msg[3].asInt);
+			var newFadeTime = msg[4].asFloat * prevFadeTime;
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
-				pt.setFadeTime(msg[2].asInt, msg[3].asInt, msg[4].asFloat)
-			});
+				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime)
+			}, "fade time: " ++ newFadeTime.asStringPrec(3));
 		});
 
 		this.addCommand("just_report", "ii", { arg msg;

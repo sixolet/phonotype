@@ -34,6 +34,19 @@ SIN 440
 SIN + 220 * 220 IT
 ```
 
+## Navigation
+
+F1..F8 on the keyboard navigates to script 1 through 8.
+
+F9 on the keyboard navigates to the `M` (main) script. This is the script that
+outputs sound.
+
+Arrow keys choose a line to edit; enter key actually changes the line.
+
+Shift-enter inserts a new "passthrough" line above the current one.
+
+K2 adjusts the fade time of the current line.
+
 ## Operators
 
 Each is listed as `NAME` - number of args - description

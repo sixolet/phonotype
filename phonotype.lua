@@ -287,11 +287,20 @@ function osc_in(path, args, from)
     end
     
     PTModel.scripts[script_num] = split_lines(script_contents)
-    
+    redraw()
   end
 end
 
 osc.event = osc_in
+
+function enc(n, d)
+  if n == 2 then
+    local increment = math.pow(math.sqrt(math.sqrt(2)), d)
+    engine.fade_time(PTModel.nonce, editing_script-1, edit_row-1, increment)
+  end
+end
+
+
 
 function split_lines(str)
   local lines = {}
