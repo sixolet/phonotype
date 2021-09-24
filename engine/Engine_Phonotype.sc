@@ -49,6 +49,15 @@ PTOp {
 		^args.collect({|x| x.instantiate()});
 	}
 
+	instantiateHelper { |c, rate, iargs|
+		^if (rate == \audio, {c.ar(*iargs)}, {c.kr(*iargs)});
+	}
+
+	i { |c, args|
+		var iargs = PTOp.instantiateAll(args);
+		^this.instantiateHelper(c, this.rate(args), iargs);
+	}
+
 }
 
 PTNode {
@@ -182,10 +191,10 @@ PTSilenceOp : PTConst {
 }
 
 PTFilterOp : PTOp {
-	var af, kf;
+	var c;
 
-	*new { |name, nargs, af, kf|
-		^super.newCopyArgs(name, nargs, af, kf);
+	*new { |name, nargs, c|
+		^super.newCopyArgs(name, nargs, c);
 	}
 
 	min { |args, resources|
@@ -197,12 +206,7 @@ PTFilterOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		var iargs = PTOp.instantiateAll(args);
-		^switch(this.rate(args),
-			\audio, {af.value(*iargs)},
-			\control, {kf.value(*iargs)},
-			{af.value(*iargs)}
-		);
+		^this.i(c, args);
 	}
 }
 
@@ -342,6 +346,71 @@ PTLROp : PTOp {
 	}
 }
 
+PTDelayOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("DEL", 2);
+	}
+
+	check { |args|
+		if (args[1].min < 0, {
+			PTCheckError.new("DEL time should be positive").throw;
+		});
+		if (args[1].max > 10, {
+			PTCheckError.new("DEL time should be < 10").throw;
+		});
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		^if (args[1].isConstant, {
+			this.instantiateHelper(DelayN, this.rate(args), [args[0].instantiate, args[1].max, args[1].max]);
+		}, {
+			this.instantiateHelper(DelayL, this.rate(args), [args[0].instantiate, args[1].max, args[1].instantiate]);
+		});
+	}
+}
+
+PTAllPassOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("DEL.F", 3);
+	}
+
+	check { |args|
+		if (args[1].min < 0, {
+			PTCheckError.new("DEL time should be positive").throw;
+		});
+		if (args[1].max > 10, {
+			PTCheckError.new("DEL time should be < 10").throw;
+		});
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		^if (args[1].isConstant && args[2].isConstant, {
+			this.instantiateHelper(AllpassN, this.rate(args), [args[0].instantiate, args[1].max, args[1].max, args[2].max]);
+		}, {
+			this.instantiateHelper(AllpassL, this.rate(args), [args[0].instantiate, args[1].max, args[1].instantiate, args[2].instantiate]);
+		});
+	}
+}
+
+
 PTScaleOp : PTOp {
 	*new {
 		^super.newCopyArgs("SCL", 3);
@@ -389,6 +458,34 @@ PTScaleOp : PTOp {
 	}
 }
 
+PTUniOp : PTOp {
+	*new {
+		^super.newCopyArgs("UNI", 1);
+	}
+
+	check { |args|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		if (oldMin >= oldMax, {
+			PTCheckError.new("Signal is constant or bad range data").throw;
+		});
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin));
+	}
+}
+
 PTParser {
 	var <ops, constOp;
 
@@ -405,26 +502,19 @@ PTParser {
 			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
 			"SAW" -> PTOscOp.new("SAW", 1, Saw),
 
-			"LR" -> PTLROp.new,
+			"LR" -> PTLROp.new, // Needs doc
+			"PAN" -> PTFilterOp.new("PAN", 2, Pan2), // Needs doc
 
-			"LPF" -> PTFilterOp.new("LPF", 2,
-				{ |s, f| LPF.ar(s, f)},
-				{ |s, f| LPF.kr(s, f)},
-			),
-			"BPF" -> PTFilterOp.new("BPF", 2,
-				{ |s, f| BPF.ar(s, f)},
-				{ |s, f| BPF.kr(s, f)},
-			),
-			"HPF" -> PTFilterOp.new("HPF", 2,
-				{ |s, f| HPF.ar(s, f)},
-				{ |s, f| HPF.kr(s, f)},
-			),
-			"MOOG" -> PTFilterOp.new("MOOG", 3,
-				{ |s, f, r| MoogFF.ar(s, f, r)},
-				{ |s, f, r| MoogFF.kr(s, f, r)},
-			),
+			"LPF" -> PTFilterOp.new("LPF", 2, LPF),
+			"BPF" -> PTFilterOp.new("BPF", 2, BPF),
+			"HPF" -> PTFilterOp.new("HPF", 2, HPF),
+			"MOOG" -> PTFilterOp.new("MOOG", 3, MoogFF),
 
-			"SCL" -> PTScaleOp.new,
+			"DEL" -> PTDelayOp.new,
+			"DEL.F" -> PTAllPassOp.new,
+
+			"SCL" -> PTScaleOp.new, // Needs doc
+			"UNI" -> PTUniOp.new, // Needs doc
 
 			"SILENCE" -> PTSilenceOp.new,
 			"+" -> PTPlusOp.new("+", 2),
@@ -530,7 +620,6 @@ PTScriptNet {
 		i = argProxies[0];
 		o = NodeProxy.new(server, i.rate, numChannels: 2);
 		PTScriptNet.makeOut(o, i.rate);
-		"o.rate: %\n".postf(o.rate);
 		o.set(\in, i);
 		^super.newCopyArgs(server, parser,
 			List.newUsing(["in", "out"]),
@@ -541,7 +630,6 @@ PTScriptNet {
 	}
 
 	*maybeMakeStereo { |ugen|
-		"Makin % stereo?\n".postf(ugen);
 		^if (ugen.size == 0, {
 			ugen!2
 		}, {ugen});

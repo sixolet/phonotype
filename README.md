@@ -93,6 +93,35 @@ Basic.
 2. Cutoff frequency
 3. Resonance. Zero to 4.
 
+## Delay and stuff
+
+`DEL` - 2 - Delay
+
+Uses linear interpolation if it senses delay time will vary.
+
+1. Signal to delay
+2. Delay time
+
+`DEL.F` - 3 - Delay with feedback
+
+Also known as "all-pass filter".
+
+1. Signal to delay
+2. Delay time
+3. Time to decay by -60dB
+
+## Panning
+
+`LR` - 2 - Stereo
+
+1. Left
+2. Right
+
+`PAN` - 2 - Pan
+
+1. Signal to pan
+2. Side. -1 is left, 1 is right.
+
 ## Busses
 
 `IT` - 0 - The previous line
@@ -106,9 +135,10 @@ Theoretical. I have not tried it. It might work.
 
 ## Scripts
 
-You call a script by prepending its number with a `$` (and no space). If you
-want to pass arguments, put a `.`, and the the number of arguments you want to
-pass. For example:
+You call a script by prepending its number with a `$` (and no space). You can
+only call scripts from higher-numbered scripts; you can call any script from
+`M`. If you want to pass arguments, put a `.`, and the the number of arguments
+you want to pass. For example:
 
 ```
 $1.3 IT SIN 1 4
@@ -138,4 +168,10 @@ in range.
 
 1. Signal to scale
 2. New min. Must be constant.
-3. New max. Must be constant. 
+3. New max. Must be constant.
+
+`UNI` - 1 - Unipolar
+
+Scale 0 to 1.
+
+1. Signal to scale
