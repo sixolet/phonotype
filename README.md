@@ -61,6 +61,11 @@ Each is listed as `NAME` - number of args - description
 
 1. Frequency
 
+`PSIN` - 2 - Phase-modulatable sine wave
+
+1. Frequency
+2. Phase
+
 `TRI` - 1 - Triangle wave
 
 1. Frequency
@@ -73,6 +78,17 @@ Each is listed as `NAME` - number of args - description
 
 1. Frequency
 2. Width, from 0 to 1, saw to triangle to ramp.
+
+
+`SQUARE` - 1 - Square wave
+
+1. Frequency
+
+`PULSE` - 2 - Variable-width pulse
+
+1. Frequency
+2. Width, from 0 to 1
+
 
 ## Filters
 
@@ -87,11 +103,41 @@ Basic.
 1. Signal to filter
 2. Cutoff frequency. Careful with very low values.
 
+
+`RLPF` - 3 - Resonant low pass filter
+
+`RHPF` - 3 - Resonant high pass filter
+
+Slightly less basic.
+
+1. Signal to filter
+2. Cutoff frequency. Careful with very low values.
+3. Damping. 0.01 - 0.3 or so is quite resonant, 1 is not very resonant, 2 is very gentle.
+
+
+`RING` - 3 - Ringing resonant bandpass filter
+
+Combine these to get some basic physical modelling.
+
+1. Singal to filter
+2. Frequency
+3. Resonance: Time to -60dB impulse response
+
 `MOOG` - 3 - Moog emulation filter
 
 1. Signal to filter
 2. Cutoff frequency
 3. Resonance. Zero to 4.
+
+`LAG` - 2 - Lag/slew the same up and down
+
+1. Singal to lag
+2. Time to get most of the way
+
+`SLEW` - 3 - Lag/slew time different up and down
+1. Signal to lag
+2. Time to go up
+3. Time to go down
 
 ## Delay and stuff
 

@@ -156,20 +156,19 @@ PTConst : PTOp {
 }
 
 PTOscOp : PTOp {
-	var delegate;
+	var delegate, delegateLF;
 
-	*new{ |name, nargs, delegate|
-		^super.newCopyArgs(name, nargs, delegate);
+	*new{ |name, nargs, delegate, delegateLF|
+		^super.newCopyArgs(name, nargs, delegate, delegateLF);
 	}
 
 	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args);
 		var f = iargs[0];
-		var width = iargs[1] ? 0.5;
 		^switch(this.rate(args),
-			\audio, {delegate.ar(freq: f, width: width)},
-			\control, {delegate.kr(freq: f, width: width)},
-			{delegate.ar(*PTOp.instantiateAll(args))},
+			\audio, {delegate.ar(freq: f)},
+			\control, {delegateLF.kr(freq: f)},
+			{delegate.ar(freq: f)},
 		);
 	}
 
@@ -178,6 +177,35 @@ PTOscOp : PTOp {
 		^if(args[0].max > 10, { \audio }, { \control });
 	}
 }
+
+PTOscOpWidth : PTOscOp {
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		var f = iargs[0];
+		var width = iargs[1];
+		^switch(this.rate(args),
+			\audio, {delegate.ar(freq: f, width: width)},
+			\control, {delegateLF.kr(freq: f, width: width)},
+			{delegate.ar(freq: f, width: width)},
+		);
+	}
+}
+
+PTOscOpPhase : PTOscOp {
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		var f = iargs[0];
+		var phase = iargs[1];
+		^switch(this.rate(args),
+			\audio, {delegate.ar(freq: f, phase: phase)},
+			\control, {delegateLF.kr(freq: f, phase: phase)},
+			{delegate.ar(freq: f, phase: phase)},
+		);
+	}
+}
+
 
 // An audio-rate zero
 PTSilenceOp : PTConst {
@@ -497,24 +525,34 @@ PTParser {
 		^PTParser.new(Dictionary.with(*[
 			"IN" -> PTInOp.new(),
 			"PI" -> PTConst.new("PI", pi),
-			"SIN" -> PTOscOp.new("SIN", 1, SinOsc),
-			"TRI" -> PTOscOp.new("TRI", 1, VarSaw),
-			"VSAW" -> PTOscOp.new("VSAW", 2, VarSaw),
-			"SAW" -> PTOscOp.new("SAW", 1, Saw),
+			"SIN" -> PTOscOp.new("SIN", 1, SinOsc, SinOsc),
+			"PSIN" -> PTOscOpPhase("PSIN", 2, SinOsc, SinOsc),
+			"TRI" -> PTOscOp.new("TRI", 1, VarSaw, VarSaw),
+			"VSAW" -> PTOscOpWidth.new("VSAW", 2, VarSaw, VarSaw),
+			"SAW" -> PTOscOp.new("SAW", 1, Saw, LFSaw),
+			"SQUARE" -> PTOscOp.new("SQUARE", 1, Pulse, LFPulse),
+			"PULSE" -> PTOscOpWidth.new("PULSE", 2, Pulse, LFPulse),
 
-			"LR" -> PTLROp.new, // Needs doc
-			"PAN" -> PTFilterOp.new("PAN", 2, Pan2), // Needs doc
+			"LR" -> PTLROp.new,
+			"PAN" -> PTFilterOp.new("PAN", 2, Pan2),
 
 			"LPF" -> PTFilterOp.new("LPF", 2, LPF),
 			"BPF" -> PTFilterOp.new("BPF", 2, BPF),
 			"HPF" -> PTFilterOp.new("HPF", 2, HPF),
+			"RLPF" -> PTFilterOp.new("RLPF", 3, RLPF),
+			"RHPF" -> PTFilterOp.new("RHPF", 3, RHPF),
 			"MOOG" -> PTFilterOp.new("MOOG", 3, MoogFF),
+
+			"RING" -> PTFilterOp.new("RING", 3, Ringz),
+
+			"LAG" -> PTFilterOp.new("LAG", 2, Lag),
+			"SLEW" -> PTFilterOp.new("SLEW", 3, LagUD),
 
 			"DEL" -> PTDelayOp.new,
 			"DEL.F" -> PTAllPassOp.new,
 
-			"SCL" -> PTScaleOp.new, // Needs doc
-			"UNI" -> PTUniOp.new, // Needs doc
+			"SCL" -> PTScaleOp.new,
+			"UNI" -> PTUniOp.new,
 
 			"SILENCE" -> PTSilenceOp.new,
 			"+" -> PTPlusOp.new("+", 2),
