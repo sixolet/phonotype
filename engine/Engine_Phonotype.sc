@@ -576,10 +576,10 @@ PTBusSendOp : PTOp {
 
 	instantiate { |args, resources|
 		var n = args[0].min;
-		var a = args[1].instantiate;
+		var a = PTScriptNet.maybeMakeStereo(args[1].instantiate);
 		^if (rate == \audio,
-			{{ Out.ar(busses[n], a); a}},
-			{{ Out.kr(busses[n], a); a}});
+			{ Out.ar(busses[n], a); a},
+			{ Out.kr(busses[n], a); a});
 	}
 }
 
@@ -600,7 +600,7 @@ PTNamedBusOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		^if (rate == \audio, {bus.ar}, {{bus.kr}});
+		^if (rate == \audio, {bus.ar}, {bus.kr});
 	}
 
 	rate { |args|
@@ -625,10 +625,10 @@ PTNamedBusSendOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		var a = args[0].instantiate;
+		var a = PTScriptNet.maybeMakeStereo(args[0].instantiate);
 		^if (rate == \audio,
-			{{ Out.ar(bus, a); a}},
-			{{ Out.kr(bus, a); a}});
+			{ Out.ar(bus, a); a},
+			{ Out.kr(bus, a); a});
 	}
 }
 
@@ -786,6 +786,10 @@ PTScriptNet {
 	}
 
 	*maybeMakeStereo { |ugen|
+		var u = ugen;
+		if (ugen.class == Function, {
+			u = ugen.value;
+		});
 		^if (ugen.size == 0, {
 			ugen!2
 		}, {ugen});
