@@ -55,6 +55,16 @@ Each is listed as `NAME` - number of args - description
 2. Arg 2 description
 3. Etc.
 
+### Math
+
+`+` - 2 - Add
+
+Mix/add two signals
+
+`*` - 2 - Multiply
+
+Multiply/VCA/Ring modulate two signals.
+
 ### Oscillators
 
 `SIN` - 1 - Sine wave
@@ -90,7 +100,7 @@ Each is listed as `NAME` - number of args - description
 2. Width, from 0 to 1
 
 
-## Filters
+### Filters
 
 `LPF` - 2 - Low pass filter
 
@@ -139,7 +149,7 @@ Combine these to get some basic physical modelling.
 2. Time to go up
 3. Time to go down
 
-## Delay and stuff
+### Delay and stuff
 
 `DEL` - 2 - Delay
 
@@ -156,7 +166,7 @@ Also known as "all-pass filter".
 2. Delay time
 3. Time to decay by -60dB
 
-## Panning
+### Panning
 
 `LR` - 2 - Stereo
 
@@ -168,7 +178,7 @@ Also known as "all-pass filter".
 1. Signal to pan
 2. Side. -1 is left, 1 is right.
 
-## Busses
+### Busses
 
 `IT` - 0 - The previous line
 
@@ -179,7 +189,7 @@ middle of your chain.
 
 Theoretical. I have not tried it. It might work.
 
-## Scripts
+### Scripts
 
 You call a script by prepending its number with a `$` (and no space). You can
 only call scripts from higher-numbered scripts; you can call any script from
@@ -195,7 +205,7 @@ Calls script 1 with 3 arguments, namely `IT`, `SIN 1`, and `4`.
 Within script 1, those are available as `I1`, `I2`, and `I3`. The first input is
 also available on `IT` of the first line in the script.
 
-## Misc
+### Misc
 
 `PI` - 0 - Pi.
 

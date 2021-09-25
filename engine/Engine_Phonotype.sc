@@ -514,6 +514,124 @@ PTUniOp : PTOp {
 	}
 }
 
+PTBusOp : PTOp {
+
+	var rate, busses;
+
+	*new { |name, rate, busses|
+		^super.newCopyArgs(name, 1, rate, busses);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant bus number").throw;
+		});
+		if (args[0].min >= busses.size, {
+			PTCheckError.new(name ++ " max bus number is " ++ busses.size).throw;
+		});
+	}
+
+	min { |args, resources|
+		^-10;
+	}
+
+	max { |args, resources|
+		^10;
+	}
+
+	instantiate { |args, resources|
+		var n = args[0].min;
+		^if (rate == \audio, {busses[n].ar}, {busses[n].kr});
+	}
+
+	rate { |args|
+		^rate
+	}
+}
+
+PTBusSendOp : PTOp {
+
+	var rate, busses;
+
+	*new { |name, rate, busses|
+		^super.newCopyArgs(name, 2, rate, busses);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant bus number").throw;
+		});
+		if (args[0].min >= busses.size, {
+			PTCheckError.new(name ++ " max bus number is " ++ busses.size).throw;
+		});
+	}
+
+	min { |args, resources|
+		^args[1].min;
+	}
+
+	max { |args, resources|
+		^args[1].max;
+	}
+
+	instantiate { |args, resources|
+		var n = args[0].min;
+		var a = args[1].instantiate;
+		^if (rate == \audio,
+			{{ Out.ar(busses[n], a); a}},
+			{{ Out.kr(busses[n], a); a}});
+	}
+}
+
+PTNamedBusOp : PTOp {
+
+	var rate, bus;
+
+	*new { |name, rate, bus|
+		^super.newCopyArgs(name, 0, rate, bus);
+	}
+
+	min { |args, resources|
+		^-10;
+	}
+
+	max { |args, resources|
+		^10;
+	}
+
+	instantiate { |args, resources|
+		^if (rate == \audio, {bus.ar}, {{bus.kr}});
+	}
+
+	rate { |args|
+		^rate
+	}
+}
+
+PTNamedBusSendOp : PTOp {
+
+	var rate, bus;
+
+	*new { |name, rate, bus|
+		^super.newCopyArgs(name, 1, rate, bus);
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		var a = args[0].instantiate;
+		^if (rate == \audio,
+			{{ Out.ar(bus, a); a}},
+			{{ Out.kr(bus, a); a}});
+	}
+}
+
 PTParser {
 	var <ops, constOp;
 
@@ -635,7 +753,7 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var server, parser, <order, <dict, <id, <script, <argProxies, <callSite;
+	var server, parser, <order, <dict, <id, <script, <argProxies, <callSite, jBus, kBus;
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
@@ -681,6 +799,8 @@ PTScriptNet {
 			I3: PTArgOp("I3", \i3, argProxies[2].rate),
 			I4: PTArgOp("I4", \i1, argProxies[3].rate),
 			IT: PTArgOp("IT", \in, r),
+			J: PTNamedBusOp("J", \audio, jBus),
+			K: PTNamedBusOp("K", \control, kBus),
 			callSite: (net: this, id: id),
 		);
 		if (script != nil, {ret.parent = script.context});
@@ -689,7 +809,6 @@ PTScriptNet {
 
 	newProxy { |rate=nil|
 		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
-		"new % proxy\n".postf(rate);
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -701,6 +820,8 @@ PTScriptNet {
 	init { |l, cs|
 		if (script != nil, {script.refs[id] = this});
 		l.do { |x| this.add(x) };
+		jBus = Bus.audio(server, 2);
+		kBus = Bus.control(server, 2);
 		callSite = cs;
 	}
 
@@ -917,6 +1038,9 @@ PTScriptNet {
 			entry.proxy.clear;
 			entry.node.free;
 		};
+		argProxies.do { |p| p.free };
+		jBus.free;
+		kBus.free;
 		// remove myself from ref tracking.
 		if (script != nil, {script.refs.removeAt(id)});
 	}
@@ -1061,14 +1185,47 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, parser, <main;
+	var server, <scripts, parser, <main, audio_busses, control_busses;
 
 	*new { |server|
-		^super.newCopyArgs(server, Array.new(numScripts), PTParser.default, nil).init;
+		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil).init;
+	}
+
+	putBusOps { |ctx, name, bus, rate|
+		ctx[name.asSymbol] = PTNamedBusOp.new(name, rate, bus);
+		ctx[(name ++ "=").asSymbol] = PTNamedBusSendOp.new(name ++ "=", rate, bus);
+	}
+
+	initBusses { |ctx|
+		audio_busses = List.new;
+		20.do { |i|
+			var bus = Bus.audio(server, numChannels: 2);
+			audio_busses.add(bus);
+		};
+		ctx['AB'] = PTBusOp.new("AB", \audio, audio_busses);
+		ctx['AB='] = PTBusSendOp.new("AB=", \audio, audio_busses);
+		this.putBusOps(ctx, "A", audio_busses[16], \audio);
+		this.putBusOps(ctx, "B", audio_busses[17], \audio);
+		this.putBusOps(ctx, "C", audio_busses[18], \audio);
+		this.putBusOps(ctx, "D", audio_busses[19], \audio);
+
+		control_busses = List.new;
+		20.do { |i|
+			var bus = Bus.control(server, numChannels: 2);
+			control_busses.add(bus);
+		};
+		ctx['CB'] = PTBusOp.new("CB", \control, control_busses);
+		ctx['CB='] = PTBusSendOp.new("CB=", \control, control_busses);
+		this.putBusOps(ctx, "W", control_busses[16], \control);
+		this.putBusOps(ctx, "X", control_busses[17], \control);
+		this.putBusOps(ctx, "Y", control_busses[18], \control);
+		this.putBusOps(ctx, "Z", control_busses[19], \control);
 	}
 
 	init {
 		var ctx = ();
+		this.initBusses(ctx);
+		scripts = Array.new(numScripts);
 		numScripts.do { |i|
 			var script = PTScript.new(scriptSize, ctx);
 			var oldCtx = ctx;
@@ -1097,8 +1254,8 @@ PT {
 		scripts[script].removeAt(index, topLevel: true);
 	}
 
-	add { |script, line|
-		scripts[script].add(line, topLevel: true);
+	add { |script, line, initialLoad=false|
+		scripts[script].add(line, topLevel: initialLoad.not);
 	}
 
 	printOn { | stream |
@@ -1124,13 +1281,15 @@ PT {
 		scripts.do { |s|
 			s.clear;
 		};
+		audio_busses.do { |b| b.free };
+		control_busses.do { |b| b.free };
 	}
 
 	load { |str|
 		var lines = str.split($\n);
 		var curScript = 0;
-		this.clear();
-		this.init();
+		this.clear;
+		this.init;
 		lines.do { |l|
 			case {l[0] == $#} {
 				curScript = (l[1..].asInteger - 1);
@@ -1139,9 +1298,14 @@ PT {
 				// pass
 			}
 			{true} {
-				this.add(curScript, l);
+				this.add(curScript, l, initialLoad: true);
 			};
-		}
+		};
+		if (this.out.rate != \audio, {
+			this.clear;
+			this.init;
+			PTCheckError.new("Output of loaded script was not audio").throw;
+		});
 	}
 
 	out {
@@ -1241,4 +1405,13 @@ Engine_Phonotype : CroneEngine {
 // [x] When a ScriptNet ends up with a `propagate` operation that propagates all the way to the end of script, blow up the calling line and replace it entire.
 //    * The problem is that the "replace entire" operation needs to see the *new version* of the line. Figure out how to put that in the context.
 // [x] Check for various leaks
-// When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time. 
+// [x] When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time.
+// [x] Busses, both private and global
+// [ ] Buffer ops
+// [ ] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
+// [ ] -, /
+// [ ] Rhythm ops of some kind. *..-..*. * M 4 MEASURE # Produce the given rhythm (with differnet strength triggeres for acceents) taking 4 beats triggered by MEASURE?
+// [ ] Norns param ops
+// [ ] Norns hz, gate for basic midi
+// [ ] Envelopes: PERC, AR, ADSR
+// [ ] Sequencer ops
