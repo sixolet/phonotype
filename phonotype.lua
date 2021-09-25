@@ -155,7 +155,17 @@ function script_num_rep(n)
 end
 
 function init()
-
+  local param_spec = controlspec.new(0,1,'lin',1/127.0,0.5,'')
+  for i=0,15,1 do
+    local param_id = string.format("param%i", i)
+    params:add_control(
+      param_id,
+      string.format("param %i", i),
+      param_spec)
+    params:set_action(param_id, function(x) engine.set_param(i, x) end)
+  end
+  params:bang()
+ 
   print("the end and the beginning they are the same.")
 end
 

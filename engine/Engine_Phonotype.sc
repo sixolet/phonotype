@@ -516,10 +516,10 @@ PTUniOp : PTOp {
 
 PTBusOp : PTOp {
 
-	var rate, busses;
+	var rate, busses, min, max;
 
-	*new { |name, rate, busses|
-		^super.newCopyArgs(name, 1, rate, busses);
+	*new { |name, rate, busses, min= -10, max= 10|
+		^super.newCopyArgs(name, 1, rate, busses, min, max);
 	}
 
 	check { |args|
@@ -532,11 +532,11 @@ PTBusOp : PTOp {
 	}
 
 	min { |args, resources|
-		^-10;
+		^min;
 	}
 
 	max { |args, resources|
-		^10;
+		^max;
 	}
 
 	instantiate { |args, resources|
@@ -1191,10 +1191,10 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, parser, <main, audio_busses, control_busses;
+	var server, <scripts, parser, <main, audio_busses, control_busses, param_busses;
 
 	*new { |server|
-		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil).init;
+		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil, nil).init;
 	}
 
 	putBusOps { |ctx, name, bus, rate|
@@ -1226,6 +1226,14 @@ PT {
 		this.putBusOps(ctx, "X", control_busses[17], \control);
 		this.putBusOps(ctx, "Y", control_busses[18], \control);
 		this.putBusOps(ctx, "Z", control_busses[19], \control);
+
+		param_busses = List.new;
+		16.do { |i|
+			var bus = Bus.control(server, numChannels: 2);
+			param_busses.add(bus);
+		};
+		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
+		ctx['PRM'] = ctx['PARAM'];
 	}
 
 	init {
@@ -1254,6 +1262,10 @@ PT {
 
 	insertPassthrough { |script, index|
 		scripts[script].insertPassthrough(index);
+	}
+
+	setParam { |param, v|
+		param_busses[param].value = v;
 	}
 
 	removeAt { |script, index|
@@ -1376,6 +1388,10 @@ Engine_Phonotype : CroneEngine {
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
 				pt.add(msg[2].asInt, msg[3].asString)
 			});
+		});
+
+		this.addCommand("set_param", "if", { arg msg;
+			pt.setParam(msg[1].asInt, msg[2].asFloat);
 		});
 
 		this.addCommand("remove", "iii", { arg msg;

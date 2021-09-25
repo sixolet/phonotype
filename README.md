@@ -253,6 +253,10 @@ B, C, D or X, Y, Z, W.
 B, C, D or X, Y, Z, W.
 2. The signal to send to the bus.
 
+`PARAM` (alias `PRM`) - 1 - Norns parameters
+
+PHONOTYPE is equipped with a bank of 16 general-purpose Norns parameters, mapped to
+`PARAM 0` through `PARAM 15`. Each ranges from 0 to 1. 16n or similar recommended.
 
 `IT` - 0 - The previous line
 
