@@ -805,6 +805,8 @@ PTScriptNet {
 			IT: PTArgOp("IT", \in, r),
 			J: PTNamedBusOp("J", \audio, jBus),
 			K: PTNamedBusOp("K", \control, kBus),
+			'J=': PTNamedBusSendOp("J", \audio, jBus),
+			'K=': PTNamedBusSendOp("K", \control, kBus),
 			callSite: (net: this, id: id),
 		);
 		if (script != nil, {ret.parent = script.context});
