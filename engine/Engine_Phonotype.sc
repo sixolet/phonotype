@@ -541,7 +541,7 @@ PTBusOp : PTOp {
 
 	instantiate { |args, resources|
 		var n = args[0].min;
-		^if (rate == \audio, {busses[n].ar}, {busses[n].kr});
+		^if (rate == \audio, {InFeedback.ar(busses[n].index, numChannels: 2)}, {busses[n].kr});
 	}
 
 	rate { |args|
@@ -600,7 +600,7 @@ PTNamedBusOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		^if (rate == \audio, {bus.ar}, {bus.kr});
+		^if (rate == \audio, {InFeedback.ar(bus.index, numChannels: 2)}, {bus.kr});
 	}
 
 	rate { |args|
@@ -1433,7 +1433,8 @@ Engine_Phonotype : CroneEngine {
 // [ ] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
 // [ ] -, /
 // [ ] Rhythm ops of some kind. *..-..*. * M 4 MEASURE # Produce the given rhythm (with differnet strength triggeres for acceents) taking 4 beats triggered by MEASURE?
-// [ ] Norns param ops
+// [x] Norns param ops
 // [ ] Norns hz, gate for basic midi
 // [ ] Envelopes: PERC, AR, ADSR
 // [ ] Sequencer ops
+// [ ] Polyphonic midi ops???
