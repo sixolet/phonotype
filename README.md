@@ -180,10 +180,85 @@ Also known as "all-pass filter".
 
 ### Busses
 
+* Busses are the one major place where the underlying Supercollider rates get
+  exposed in PHONOTYPE. Busses have an intrinsic rate.
+
+* The result of a bus send operation is the signal being sent. This allows you
+  to send to a bus but still use the expression in a different way.
+
+* All busses are assumed to be "modular level" for range calculations. If you
+  pass hz-level (3000) type numbers on them, you may end up with oscillators at
+  the wrong rate. When transmitting frequency on a bus, consider transmitting it
+  as octaves.
+
+`A` - 0 - Audio Bus
+
+`B` - 0 - Audio Bus
+
+`C` - 0 - Audio Bus
+
+`D` - 0 - Audio Bus
+
+Global audio rate busses. Without an `=`, reads from the bus.
+
+
+`A=` - 1 - Audio Bus send
+
+`B=` - 1 - Audio Bus send
+
+`C=` - 1 - Audio Bus send
+
+`D=` - 1 - Audio Bus send
+
+Global audio rate bus sends. Mixes on the bus.
+
+1. The signal to send to the bus.
+
+
+`A` - 0 - Control Bus
+
+`B` - 0 - Control Bus
+
+`C` - 0 - Control Bus
+
+`D` - 0 - Control Bus
+
+Global control rate busses. Without an `=`, reads from the bus.
+
+
+`A=` - 1 - Control Bus send
+
+`B=` - 1 - Control Bus send
+
+`C=` - 1 - Control Bus send
+
+`D=` - 1 - Control Bus send
+
+Global control rate bus sends. Mixes on the bus.
+
+1. The signal to send to the bus.
+
+`AB` - 1 - Audio bus array
+`CB` - 1 - Control bus array
+
+Global bus arrays, 16 each of audio and control indexed busses to play with.
+
+1. The number of the bus. Must be a constant 0-20. The last four busses are A,
+B, C, D or X, Y, Z, W.
+
+`AB=` - 2 - Audio bus array send
+`CB=` - 2 - Control bus array send
+
+1. The number of the bus. Must be a constant 0-20. The last four busses are A,
+B, C, D or X, Y, Z, W.
+2. The signal to send to the bus.
+
+
 `IT` - 0 - The previous line
 
 This is the coolest shit. `IT` allows you to smoothly patch in new bits in the
-middle of your chain.
+middle of your chain. `IT` is the only bus operation that is flexible about its
+rate - it will be whatever rate the previous line was.
 
 `IN` - 0 - The input
 
