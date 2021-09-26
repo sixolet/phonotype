@@ -1,9 +1,11 @@
+
 TestPT : UnitTest {
 
-	var p;
+	var p, freeBusses;
 
 	setUp {
 		p = PT.new(Server.default);
+		freeBusses = Server.default.audioBusAllocator.countFree;
 	}
 
 	tearDown {
@@ -22,6 +24,65 @@ SIN 440
 * IT $1.1 0.5
 "
 		);
+	}
+
+	test_removeLast {
+		p.load("
+#9
+SIN 440
+"
+		);
+		p.removeAt(8, 0);
+	}
+
+	test_removeExposingControlRate {
+		p.load("
+#9
+X= UNI VSAW 1 0
+* SIN 440 X
+"
+		);
+		// This should fail.
+		this.assertException({
+			p.removeAt(8, 1);
+		}, PTCheckError);
+	}
+
+	test_removeDoesntExist {
+		p.load("
+#9
+SIN 440
+"
+		);
+		p.removeAt(8, 0);
+		this.assertException({
+			p.removeAt(8, 0);
+		}, PTCheckError);
+	}
+
+	test_lotsOfOpsLoadWithoutError {
+		p.load("
+#1
++ 0.5 * 0.5 SIN I1
+#9
+SIN 440
+PSIN 220 * PI IT
+* IT $1.1 0.5
+");
+
+		p.load("
+#9
+PULSE LR 217 223 UNI LR SIN 0.3 SIN 0.4
+* 0.3 PAN RLPF IT SCL SIN 0.2  200 1000 0.3 SIN 1
++ IT * 0.5 DEL.F IT + UNI SIN 0.02 0.04 3
+");
+
+p.load("
+#9
+AB= 3 * SIN 440 X
+X= SIN 1
+* * AB 3 0.2 SIN 0.3
+");
 	}
 
 	test_sclOp {

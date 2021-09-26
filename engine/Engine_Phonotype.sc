@@ -95,8 +95,12 @@ PTNode {
 	}
 
 	free {
+		Post << "Freeing " << this.op << "\n";
 		if (resources != nil, {
-			resources.do { |x| x.free };
+			resources.do { |x|
+				Post << "Freeing resources " << x << "\n";
+				x.free();
+			};
 		});
 		args.do { |x| x.free };
 	}
@@ -245,7 +249,7 @@ PTPlusOp : PTOp {
 
 	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args);
-		^Mix.ar(iargs);
+		^iargs[0] + iargs[1];
 	}
 
 	min { |args, resources|
@@ -692,6 +696,14 @@ PTParser {
 		^a.value;
 	}
 
+	debug { |context, str|
+		context.includesKey[\debug].if({
+			context[\debug].if({
+				Post << "DEBUG: " << str << "\n"
+			})
+		});
+	}
+
 	parseHelper {|tokens, pos, context|
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
@@ -766,6 +778,7 @@ PTScriptNet {
 				server,
 				rate: if(a != nil, {a.rate}, {\control}),
 				numChannels: if(a != nil, {2}, {1}));
+			n.quant = 0.01;
 			if (
 				a != nil,
 				{ n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) } },
@@ -775,6 +788,7 @@ PTScriptNet {
 		};
 		i = argProxies[0];
 		o = NodeProxy.new(server, i.rate, numChannels: 2);
+		o.quant = 0.01;
 		PTScriptNet.makeOut(o, i.rate);
 		o.set(\in, i);
 		^super.newCopyArgs(server, parser,
@@ -815,6 +829,7 @@ PTScriptNet {
 
 	newProxy { |rate=nil|
 		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
+		ret.quant = 0.01;
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -1053,6 +1068,52 @@ PTScriptNet {
 
 }
 
+PTFreer {
+	var f;
+
+	*new {|f|
+		^super.newCopyArgs(f);
+	}
+
+	free {
+		f.value;
+	}
+}
+
+PTRhythmOp : PTOp {
+	var server, quant, phase;
+
+	*new { |name, nargs, server, quant, phase=0|
+		^super.newCopyArgs(name, nargs, server, quant, phase)
+	}
+
+	min { ^0 }
+
+	max { ^1 }
+
+	rate { ^\control }
+
+	alloc {
+		var b = Bus.control(server, numChannels: 1);
+		var idx = b.index;
+		var q = Quant.new(quant, phase: phase);
+		var esp;
+		var pattern = Pbind(\instrument, \tick, \dur, quant, \bus, b.index);
+		if (quant == 0, { Error.new("OOPOS quant zero").throw; });
+		esp = pattern.play(TempoClock.default, quant: q);
+		Post << "Starting beat" << idx << "\n";
+		^[b, PTFreer({
+			Post << "Stopping beat" << idx << "\n";
+			esp.stop;
+		})  ];
+	}
+
+	instantiate { |args, resources|
+		var b = resources[0];
+		^b.kr
+	}
+}
+
 PTScriptOp : PTOp {
 	var server, parser, script;
 
@@ -1109,9 +1170,10 @@ PTScript {
 		this.replace(idx, line, topLevel);
 	}
 
-	validateIndex { |index|
+	validateIndex { |index, allowSize=true|
 		if (index < 0, { PTEditError.new("Index must be greater than zero").throw });
 		if (index > lines.size, { PTEditError.new("Index must be less than the current number of lines").throw });
+		if ((index == lines.size) && (allowSize.not), { PTEditError.new("Cant operate on index " ++ index).throw });
 	}
 
 	insertPassthrough { |index|
@@ -1194,6 +1256,11 @@ PT {
 	var server, <scripts, parser, <main, audio_busses, control_busses, param_busses;
 
 	*new { |server|
+		SynthDef(\tick, { |bus|
+			var env = Env(levels: [0, 1, 0], times: [0, 0.01], curve: 'hold');
+			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
+		}).add;
+
 		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil, nil).init;
 	}
 
@@ -1236,9 +1303,24 @@ PT {
 		ctx['PRM'] = ctx['PARAM'];
 	}
 
+	initBeats { |ctx|
+		ctx[\QN] = PTRhythmOp("QN", 0, server, 1);
+		ctx[\HN] = PTRhythmOp("HN", 0, server, 2);
+		ctx[\WN] = PTRhythmOp("WN", 0, server, 4);
+		4.do { |i|
+			var beat = i + 1;
+			var name = "BT" ++ beat;
+			ctx[name.asSymbol] = PTRhythmOp(name, 0, server, 4, i);
+			ctx[(name ++ ".&").asSymbol] = PTRhythmOp(name ++ ".&", 0, server, 4, i + 0.5);
+			ctx[(name ++ ".E").asSymbol] = PTRhythmOp(name ++ ".E", 0, server, 4, i + 0.25);
+			ctx[(name ++ ".A").asSymbol] = PTRhythmOp(name ++ ".A", 0, server, 4, i + 0.75);
+		}
+	}
+
 	init {
 		var ctx = ();
 		this.initBusses(ctx);
+		this.initBeats(ctx);
 		scripts = Array.new(numScripts);
 		numScripts.do { |i|
 			var script = PTScript.new(scriptSize, ctx);
@@ -1295,18 +1377,27 @@ PT {
 	}
 
 	clear {
+		Post << "CLEARING old script data\n";
+		Post << "Free main\n";
 		main.free;
+		Post << "Clear scripts\n";
 		scripts.do { |s|
 			s.clear;
 		};
+		Post << "Free busses\n";
 		audio_busses.do { |b| b.free };
 		control_busses.do { |b| b.free };
 	}
 
 	load { |str|
+		this.clear;
+		this.loadOnly(str);
+	}
+
+	loadOnly { |str|
 		var lines = str.split($\n);
 		var curScript = 0;
-		this.clear;
+		Post << "INITIALIZING new script data\n";
 		this.init;
 		lines.do { |l|
 			case {l[0] == $#} {
