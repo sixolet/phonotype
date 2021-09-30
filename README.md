@@ -220,6 +220,14 @@ Exponential shape.
 3. Portion of duration spent in attack
 4. Curvature. -4 is like `AR`, 0 is like `AR.L`, and positive is funny.
 
+`ADSR` - 5 - Attack-decay-sustain-release envelope
+
+1. Trigger
+2. Attack time
+3. Decay time
+4. Sustain level
+5. Relase time
+
 ### Busses
 
 * Busses are the one major place where the underlying Supercollider rates get
