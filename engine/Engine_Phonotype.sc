@@ -773,7 +773,7 @@ PTParser {
 	parseHelper {|tokens, pos, context|
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
-		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
+		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\.[0-9]+$".matchRegexp(tokens[pos])} {
 			pos+1 -> PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
