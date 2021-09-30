@@ -1161,7 +1161,7 @@ PTScriptNet {
 					// Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
 					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
-					entry.proxy.source = { entry.newNode.instantiate };
+					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
 					lastFadeTime = entry.proxy.fadeTime;
 					entry.line = entry.newLine;
