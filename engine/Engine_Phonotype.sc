@@ -200,6 +200,70 @@ PTOscOp : PTOp {
 	}
 }
 
+PTEnvOp : PTOp {
+
+	var envFunc;
+
+	* new { |name, nargs, envFunc|
+		^super.newCopyArgs(name, nargs, envFunc);
+	}
+
+	check { |args|
+		args[1..].do { |a|
+			if (a.isConstant.not, {
+				PTCheckError.new("Envelopes have constant parameters")
+			});
+		};
+	}
+
+	min {^0}
+	max {^1}
+	rate {^\control}
+
+	instantiate { |args, resources|
+		var signal = args[0];
+		var parameters = args[1..].collect({|x| x.min});
+		^EnvGen.kr(envFunc.value(*parameters), signal.instantiate);
+	}
+}
+
+PTScaledEnvOp : PTOp {
+
+	var envFunc;
+
+	* new { |name, nargs, envFunc|
+		^super.newCopyArgs(name, nargs, envFunc);
+	}
+
+	check { |args|
+		args[2..].do { |a|
+			if (a.isConstant.not, {
+				PTCheckError.new("Envelopes have constant parameters").throw;
+			});
+		};
+	}
+
+	min {^0}
+	max {^1}
+	rate {^\control}
+
+	instantiate { |args, resources|
+		var signal = args[0];
+		var timeScale = args[1];
+		var parameters = args[2..].collect({|x| x.min});
+		^EnvGen.kr(envFunc.value(*parameters), signal.instantiate, timeScale: timeScale.instantiate);
+	}
+}
+
+PTAREnvOp : PTScaledEnvOp {
+	check { |args|
+		super.check(args);
+		if ((args[2].min < 0) || (args[2].min > 1), {
+			PTCheckError.new("Attack must be between 0 and 1").throw;
+		});
+	}
+}
+
 PTOscOpWidth : PTOscOp {
 
 	instantiate { |args, resources|
@@ -735,6 +799,11 @@ PTParser {
 
 			"LAG" -> PTFilterOp.new("LAG", 2, Lag),
 			"SLEW" -> PTFilterOp.new("SLEW", 3, LagUD),
+			"PERC" -> PTScaledEnvOp.new("PERC", 2, { Env.perc }),
+			"AR" -> PTAREnvOp.new("AR", 3, {|a| Env.perc(a, 1-a)}),
+			"AR.L" -> PTAREnvOp.new("AR.L", 3, {|a| Env.perc(a, 1-a, curve: 0)}),
+			"AR.C" -> PTAREnvOp.new("AR.C", 4, {|a, c| Env.perc(a, 1-a, curve: c)}),
+			"ADSR" -> PTEnvOp.new("ADSR", 5, {|a, d, s, r| Env.adsr(a, d, s, r)}),
 
 			"DEL" -> PTDelayOp.new,
 			"DEL.F" -> PTAllPassOp.new,
@@ -1143,7 +1212,7 @@ PTScriptNet {
 						prevEntry.proxy <>> entry.proxy;
 					},
 					{oldPreviousWasDifferent || prevProxyIsNew}, {
-						deferredConnections.add( (from: prevEntry.proxy, to: entry.proxy));
+						deferredConnections.add( (from: prevEntry, to: entry));
 					}
 				);
 				prevProxyIsNew = proxyIsNew;
@@ -1160,7 +1229,7 @@ PTScriptNet {
 					entry.newNode.commit;
 					// Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
+					Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
 					lastFadeTime = entry.proxy.fadeTime;
@@ -1173,7 +1242,7 @@ PTScriptNet {
 			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
 			Post << "Deferred connecting proxies " << deferredConnections << "\n";
-			deferredConnections.do { |x| x.to.xset(\in, x.from) };
+			deferredConnections.do { |x| x.to.proxy.xset(\in, x.from.proxy) };
 			// Stage 4: Collect anything no longer needed. Exit the transaction.
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
 			entriesToLeaveBehind.do { |id|
@@ -1538,12 +1607,13 @@ PT {
 		this.putBusOps(ctx, "Z", control_busses[19], \control);
 
 		param_busses = List.new;
-		16.do { |i|
+		17.do { |i|
 			var bus = Bus.control(server, numChannels: 2);
 			param_busses.add(bus);
 		};
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
 		ctx['PRM'] = ctx['PARAM'];
+		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16]);
 	}
 
 	initBeats { |ctx|
@@ -1781,6 +1851,20 @@ Engine_Phonotype : CroneEngine {
 		this.addCommand("just_report", "ii", { arg msg;
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, {|cb| cb.value});
 		});
+
+		this.addCommand("tempo_sync", "ff", { arg msg;
+			var beats = msg[1].asFloat;
+			var tempo = msg[2].asFloat;
+			var beatDifference = beats - TempoClock.default.beats;
+			var nudge = beatDifference % 4;
+			if (nudge > 2, {nudge = nudge - 4});
+			if ( (tempo != TempoClock.default.tempo) || (nudge.abs > 1), {
+				TempoClock.default.beats = TempoClock.default.beats + nudge;
+				TempoClock.default.tempo = tempo;
+			}, {
+				TempoClock.default.beats = TempoClock.default.beats + (0.05 * nudge);
+			});
+		});
 	}
 
 	free {
@@ -1796,6 +1880,7 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 
 // [x] Fix race conditions
 // [x] Reintegrate fixed race conditions with norns
+// [ ] Write a replacement for NodeProxy that doesn't restart its synth when the input is set -- use a bus on input
 // [ ] Figure out why sometimes using busses is buggy and/or does not clean up old connections & fix
 // [ ] Adjust tests for fixed race conditions
 // [x] Each Script keeps track of its Nets in `refs`.
@@ -1809,12 +1894,13 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 // [x] Check for various leaks
 // [x] When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time.
 // [x] Busses, both private and global
+// [ ] Output stage
 // [ ] Buffer ops
 // [ ] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
 // [ ] -, /
 // [x] Rhythm ops of some kind.
 // [x] Norns param ops
-// [ ] Clock sync with Norns
+// [x] Clock sync with Norns
 // [ ] Load and save from Norns
 // [ ] Norns hz, gate for basic midi
 // [ ] Envelopes: PERC, AR, ADSR

@@ -178,6 +178,48 @@ Also known as "all-pass filter".
 1. Signal to pan
 2. Side. -1 is left, 1 is right.
 
+### Rhythm
+
+There are a pile of rhythm ops, all 0-argument, that yield different places in
+the measure. So far we're only supporting 4/4 time, but within that you can use:
+
+* `SN` - Triggern on every sixteenth note
+* `EN` - Trigger on every eigth note
+* `QN` - Trigger on every quarter note
+* `HN` - Trigger on every half note
+* `WN` - Trigger on every whole note
+* `B1` - Trigger on every beat-1 of a measure. `B2` triggers on every beat-2, etc.
+* `B1.E` - Trigger on the second sixteenth note of beat-1 of every measure. Also
+  `B2.E`, `B1.&`, `B4.A`, and every combination like that.
+
+### Envelopes
+
+`PERC` - 2 - Percussive envelope
+
+1. Trigger
+2. Duration
+
+`AR` - 3 - Attack-release envelope.
+
+Exponential shape.
+
+1. Trigger
+2. Duration
+3. Portion of duration spent in attack
+
+`AR.L` - 3 - Linear attack-release envelope
+
+1. Trigger
+2. Duration
+3. Portion of duration spent in attack
+
+`AR.C` - 4 - Variable-curvature attack-release envelope
+
+1. Trigger
+2. Duration
+3. Portion of duration spent in attack
+4. Curvature. -4 is like `AR`, 0 is like `AR.L`, and positive is funny.
+
 ### Busses
 
 * Busses are the one major place where the underlying Supercollider rates get
