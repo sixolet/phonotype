@@ -1170,6 +1170,7 @@ PTScriptNet {
 				});
 			};
 			server.sync;
+			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
 			Post << "Deferred connecting proxies " << deferredConnections << "\n";
 			deferredConnections.do { |x| x.to.xset(\in, x.from) };
@@ -1187,7 +1188,10 @@ PTScriptNet {
 			lastFadeTime.yield;
 			// Stage 5, later: free some stuff
 			freeNodes.do({|x| x.free});
-			freeProxies.do({|x| x.clear});
+			freeProxies.do({|x|
+				Post << "Freeing proxy\n";
+				x.clear;
+			});
 		});
 	}
 
@@ -1336,10 +1340,10 @@ PTScriptOp : PTOp {
 }
 
 PTScript {
-	var <size, <lines, <fadeTimes, <refs, <context, <linesDraft, <toCommit;
+	var <size, <lines, <fadeTimes, <refs, <context, <linesDraft;
 
 	*new { |size, context|
-		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context, nil, List.new);
+		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context, nil);
 	}
 
 	linesOrDraft {
@@ -1398,6 +1402,7 @@ PTScript {
 	}
 
 	makeHappen { |f, topLevel, callback|
+		var toCommit = List.new;
 		var latch;
 		try {
 			// Post << "Doing to all refs " << refs << "\n";
@@ -1418,6 +1423,7 @@ PTScript {
 		linesDraft = nil;
 		// Post << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
 		latch = PTCountdownLatch.new(toCommit.size, callback);
+		Post << "About to commit " << toCommit << "\n";
 		toCommit.do { |p|
 			p.commit(latch).play;
 		};
