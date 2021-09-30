@@ -109,10 +109,10 @@ PTNode {
 	}
 
 	free {
-		Post << "Freeing " << this.op << "\n";
+		// Post << "Freeing " << this.op << "\n";
 		if (resources != nil, {
 			resources.do { |x|
-				Post << "Freeing resources " << x << "\n";
+				// Post << "Freeing resources " << x << "\n";
 				x.free();
 			};
 		});
@@ -1030,7 +1030,7 @@ PTScriptNet {
 	}
 
 	outputChanged {
-		Post << "output rate is " << this.outputRate << " new output rate is " << this.newOutputRate << "\n";
+		// Post << "output rate is " << this.outputRate << " new output rate is " << this.newOutputRate << "\n";
 		^(this.outputRate != nil) && (this.newOutputRate != nil) && (this.newOutputRate != this.outputRate);
 	}
 
@@ -1061,7 +1061,7 @@ PTScriptNet {
 			this.stageReplace(idx+1, next.newLine ? next.line);
 		});
 		^if (this.outputChanged && (callSite != nil), {
-			Post << "reevaluating call site\n";
+			// Post << "reevaluating call site\n";
 			callSite.net.reevaluate(callSite.id);
 		}, {
 			this
@@ -1090,7 +1090,7 @@ PTScriptNet {
 	commit { |cb|
 		var outEntry = dict[newOrder.last];
 		if (argProxies == nil, {
-			Post << "INITIALIZING ARG PROXIES\n";
+			// Post << "INITIALIZING ARG PROXIES\n";
 			this.initArgProxies;
 		});
 		^Routine.new({
@@ -1117,7 +1117,7 @@ PTScriptNet {
 						// New entry
 						entry['proxy'] = this.newProxy(node.rate);
 						proxyIsNew = true;
-						Post << "new proxy for " << idx << " due to newness\n";
+						// Post << "new proxy for " << idx << " due to newness\n";
 					},
 					{entry.proxy.rate != node.rate}, {
 						var oldFadeTime = entry.proxy.fadeTime;
@@ -1128,7 +1128,7 @@ PTScriptNet {
 						entry['proxy'] = this.newProxy(node.rate);
 						entry.proxy.fadeTime = oldFadeTime;
 						proxyIsNew = true;
-						Post << "new proxy for " << idx << " due to rate change\n";
+						// Post << "new proxy for " << idx << " due to rate change\n";
 					},
 					{ oldIdx == nil }, {},
 					{ (oldIdx != nil) && (oldIdx > 0) && (order[oldIdx-1] != prevId) }, {
@@ -1139,7 +1139,7 @@ PTScriptNet {
 				case(
 					{prevEntry == nil}, {/*pass*/},
 					{proxyIsNew }, {
-						Post << "connecting proxies for " << idx << "\n";
+						// Post << "connecting proxies for " << idx << "\n";
 						prevEntry.proxy <>> entry.proxy;
 					},
 					{oldPreviousWasDifferent || prevProxyIsNew}, {
@@ -1156,11 +1156,11 @@ PTScriptNet {
 			newOrder.do { |id|
 				var entry = dict[id];
 				if (entry.newNode != nil, {
-					Post << "Committing new node " << entry.newNode << "\n";
+					// Post << "Committing new node " << entry.newNode << "\n";
 					entry.newNode.commit;
-					Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
+					// Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
+					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { entry.newNode.instantiate };
 					entry.node = entry.newNode;
 					lastFadeTime = entry.proxy.fadeTime;
@@ -1226,10 +1226,10 @@ PTCountdownLatch {
 	}
 
 	init {
-		Post << "Initialize latch " << id << " with " << n << "\n";
+		// Post << "Initialize latch " << id << " with " << n << "\n";
 		if (n == 0, {
 			SystemClock.sched(0, {
-				Post << "Boom " << id << "\n";
+				// Post << "Boom " << id << "\n";
 				cb.value;
 			});
 		});
@@ -1238,10 +1238,10 @@ PTCountdownLatch {
 	value {
 		n = n - 1;
 		if (n == 0, {
-			Post << "Bang " << id << "\n";
+			// Post << "Bang " << id << "\n";
 			cb.value;
 		}, {
-			Post << "Tick " << n << id << "\n";
+			// Post << "Tick " << n << id << "\n";
 		});
 	}
 }
@@ -1400,9 +1400,9 @@ PTScript {
 	makeHappen { |f, topLevel, callback|
 		var latch;
 		try {
-			Post << "Doing to all refs " << refs << "\n";
+			// Post << "Doing to all refs " << refs << "\n";
 			refs.do { |r| toCommit.add(f.value(r)) };
-			Post << "Check top level\n";
+			// Post << "Check top level\n";
 			if (topLevel && (toCommit.select({|p| p.outputChanged}).size > 0), {
 				PTCheckError.new("Output must be audio").throw;
 			});
@@ -1413,10 +1413,10 @@ PTScript {
 			linesDraft = nil;
 			err.throw;
 		};
-		Post << "committing to lines " << linesDraft << "\n";
+		//Post << "committing to lines " << linesDraft << "\n";
 		lines = linesDraft;
 		linesDraft = nil;
-		Post << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
+		// Post << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
 		latch = PTCountdownLatch.new(toCommit.size, callback);
 		toCommit.do { |p|
 			p.commit(latch).play;
@@ -1730,7 +1730,7 @@ Engine_Phonotype : CroneEngine {
 		//  :/
 		pt = PT.new(context.server);
 		pt.load("", {
-			Post << "Hooray\n";
+			Post << "Initialized\n";
 			pt.out.play;
 		}, {
 			Post << "Boo\n";
@@ -1766,8 +1766,9 @@ Engine_Phonotype : CroneEngine {
 		this.addCommand("fade_time", "iiif", { arg msg;
 			var prevFadeTime = pt.getFadeTime(msg[2].asInt, msg[3].asInt);
 			var newFadeTime = msg[4].asFloat * prevFadeTime;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
-				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime)
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime);
+				cb.value;
 			}, "fade time: " ++ newFadeTime.asStringPrec(3));
 		});
 
@@ -1788,7 +1789,8 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 
 
 // [x] Fix race conditions
-// [ ] Reintegrate fixed race conditions with norns
+// [x] Reintegrate fixed race conditions with norns
+// [ ] Figure out why sometimes using busses is buggy and/or does not clean up old connections & fix
 // [ ] Adjust tests for fixed race conditions
 // [x] Each Script keeps track of its Nets in `refs`.
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
