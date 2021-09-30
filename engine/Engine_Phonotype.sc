@@ -45,6 +45,13 @@ PTOp {
 		^nil;
 	}
 
+	// commit runs as part of a Routine; it can yield.
+	commit { |args, resources|
+		args.do { |a|
+			a.commit;
+		}
+	}
+
 	*instantiateAll { |args, resources|
 		^args.collect({|x| x.instantiate()});
 	}
@@ -64,6 +71,9 @@ PTNode {
 	var <op, <args, <resources;
 	*new { |op, args, callSite=nil|
 		try {
+			if (args.size != op.nargs, {
+				Error.new(op.name ++ " Args size " ++ args ++ " does not match number of args " ++ op.nargs).throw;
+			});
 			op.check(args);
 		} { |e|
 			args.do { |a|
@@ -80,6 +90,10 @@ PTNode {
 
 	max {
 		^op.max(args, resources);
+	}
+
+	commit {
+		op.commit(args, resources);
 	}
 
 	isConstant {
@@ -113,24 +127,28 @@ PTNode {
 
 PTLiteral : PTOp {
 
-	*new{
-		^super.newCopyArgs("", "1");
+	var n;
+
+	*new{ |n|
+		^super.newCopyArgs("", 0, n);
 	}
 
 	min { |args, resources|
-		^args[0];
+		^n;
 	}
 
 	max { |args, resources|
-		^args[0];
+		^n;
 	}
 
 	rate { |args, resources|
 		^\control;
 	}
 
+	commit {}
+
 	instantiate { |args, resources|
-		^args[0];
+		^n;
 	}
 }
 
@@ -685,10 +703,10 @@ PTNamedLazyBusSendOp : PTNamedBusSendOp {
 }
 
 PTParser {
-	var <ops, constOp;
+	var <ops;
 
 	*new { |ops|
-		^super.newCopyArgs(ops, PTLiteral.new());
+		^super.newCopyArgs(ops);
 	}
 
 	*default {
@@ -756,7 +774,7 @@ PTParser {
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos])} {
-			pos+1 -> PTNode.new(constOp, [tokens[pos].asFloat()], callSite: context.callSite)
+			pos+1 -> PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
 			var op = context[tokens[pos].asSymbol];
@@ -819,14 +837,16 @@ PTScriptNet {
 		var i;
 		var o;
 		var aa = List.newFrom(args ? []);
-		while {args.size < 4} {args.add(PT.zeroNode)};
+		// Need to evaluate args *in the context of the call site* but *only in the commit phase*
+		while {aa.size < 4} {aa.add(PT.zeroNode)};
 		^super.newCopyArgs(server, parser,
 			List.newUsing(["in", "out"]),
 			nil,
 			Dictionary.newFrom([
-				"in", (line: nil, line: nil, newNode: aa[0], node: nil, proxy: nil),
-				"out", (line: "IT", line: nil, newNode: PTNode.new(PTArgOp("IT", \in, aa[0].rate), [], nil), node: nil, proxy: nil),
-		]), PT.randId, script, aa, callSite, nil, nil, nil).init(lines);
+				// Possibly don't need an in node anymore, as long as we make the right context for each line.
+				"in", (newLine: "I1", line: nil, newNode: PTNode.new(PTArgOp("I1", \i1, aa[0].rate)), node: nil, proxy: nil),
+				"out", (newLine: "IT", line: nil, newNode: PTNode.new(PTArgOp("IT", \in, aa[0].rate)), node: nil, proxy: nil),
+		]), PT.randId, script, aa, nil, callSite, nil, nil).init(lines);
 	}
 
 	*maybeMakeStereo { |ugen|
@@ -839,18 +859,33 @@ PTScriptNet {
 		}, {ugen});
 	}
 
+	prevEntryOf { |id|
+		var o = newOrder ? order;
+		var idx = o.indexOf(id);
+		var prevId = o[idx-1];
+		^dict[prevId];
+	}
+
 	initArgProxies {
 		argProxies = List.new;
 		4.do { |i|
 			var a = args[i];
-			var n = NodeProxy.new(
-				server,
-				rate: if(a != nil, {a.rate}, {\control}),
-				numChannels: if(a != nil, {2}, {1}));
-			n.quant = 0.01;
+			var n = if (callSite != nil, {
+				var p = callSite.net.newProxy;
+				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
+				p;
+			}, {
+				NodeProxy.new(
+					server,
+					rate: if(a != nil, {a.rate}, {\control}),
+					numChannels: if(a != nil, {2}, {1}))
+			});
 			if (
 				a != nil,
-				{ n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) } },
+				{
+					Post << "Setting arg source to " << a << "\n";
+					n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) };
+				},
 				{ n.source = {0.0} }
 			);
 			argProxies.add(n);
@@ -899,8 +934,9 @@ PTScriptNet {
 		if (script != nil, {script.refs[id] = this});
 		this.startEdit;
 		if (script != nil, {
-			Post << "Initializing network from script " << script << script.linesOrDraft;
+			Post << "Initializing network from script " << script << script.linesOrDraft << "\n";
 			script.linesOrDraft.do { |x|
+				Post << "Adding on init " << x << "\n";
 				this.stageAdd(x);
 			};
 		}, {
@@ -974,7 +1010,7 @@ PTScriptNet {
 	}
 
 	outputRate {
-		dict[order.last].node.rate;
+		^dict[order.last].node.rate;
 	}
 
 	stageRemoveAt { |index|
@@ -994,7 +1030,8 @@ PTScriptNet {
 	}
 
 	outputChanged {
-		^this.newOutputRate != this.outputRate;
+		Post << "output rate is " << this.outputRate << " new output rate is " << this.newOutputRate << "\n";
+		^(this.outputRate != nil) && (this.newOutputRate != nil) && (this.newOutputRate != this.outputRate);
 	}
 
 	reevaluate { |id|
@@ -1024,125 +1061,12 @@ PTScriptNet {
 			this.stageReplace(idx+1, next.newLine ? next.line);
 		});
 		^if (this.outputChanged && (callSite != nil), {
+			Post << "reevaluating call site\n";
 			callSite.net.reevaluate(callSite.id);
 		}, {
 			this
 		});
 	}
-
-
-/*	removeAt { |index|
-		var ret = this.prepareRemoveAt(index);
-		ret.commit;
-		^ret;
-	}*/
-
-
-
-/*	prepareReplaceOne { |id, line, prevEntry|
-		var oldEntry = dict[id];
-		// TODO: This might leak if a node is alloced but then we raise an exception before storing it
-		// so it can be freed. Consider how to maybe tie any alloc'd resources to the exception so they
-		// can be properly freed.
-		var newNode = parser.parse(line, context: this.contextWithItRate(prevEntry.node.rate, id: id));
-		var propagate = (newNode.rate != oldEntry.node.rate);
-		var newEntry = (
-			line: line,
-			node: newNode,
-			proxy: if(propagate, {this.newProxy(rate: newNode.rate)}, {oldEntry.proxy}),
-		);
-
-		^(
-			commit: {
-				newEntry.proxy.source = { PTScriptNet.maybeMakeStereo(newEntry.node.instantiate) };
-				if (propagate, {
-					newEntry.proxy.fadeTime = oldEntry.proxy.fadeTime;
-					newEntry.proxy.set(\in, prevEntry.proxy);
-				}, {
-					newEntry.proxy.xset(\in, prevEntry.proxy);
-				});
-				dict[id] = newEntry;
-			},
-			cleanup: {
-				oldEntry.node.free;
-				if(propagate, {
-					oldEntry.proxy.clear;
-				});
-			},
-			abort: {
-				newEntry.node.free;
-				if(propagate, {
-					newEntry.proxy.clear;
-				});
-			},
-			output: newEntry,
-			propagate: propagate,
-			time: oldEntry.proxy.fadeTime,
-		);
-	}*/
-/*
-	prepareReparse { |id, prevEntry|
-		^this.prepareReplaceOne(id, dict[id].line, prevEntry);
-	}*/
-
-/*	*combinePreparations { |preparations|
-		^(
-			commit: {
-				preparations.do({ |x| x.commit });
-			},
-			abort: {
-				preparations.do({ |x| x.abort });
-			},
-			cleanup: {
-				preparations.do({|x| x.cleanup});
-			},
-			output: preparations.last.output,
-			propagate: preparations.last.propagate,
-			time: { preparations.collect({ |x| x.time }).maxItem },
-		);
-	}*/
-/*
-	reevaluate { |id|
-		var line = dict[id].line;
-		var index = order.indexOf(id);
-		^this.prepareReplace(index, line);
-	}
-
-	prepareReplace { |index, line|
-		var i;
-		var id = order[index];
-		var prevEntry = dict[order[index-1]];
-		var preparations = List.new;
-		var p = this.prepareReplaceOne(id, line, prevEntry);
-		var ret;
-		preparations.add(p);
-		i = index + 1;
-		while({ (i < order.size) && (p.propagate) }, {
-			p = this.prepareReparse(order[i], p.output);
-			i = i + 1;
-			preparations.add(p);
-		});
-
-		// If we have changed the output rate of this script, reevaluate the call site instead.
-		if (p.propagate, {
-			if ( callSite != nil, {
-				preparations.do { |p| p.abort };
-				ret = callSite.net.reevaluate(callSite.id);
-			}, {
-				ret = PTScriptNet.combinePreparations(preparations);
-			});
-		}, {
-			ret = PTScriptNet.combinePreparations(preparations);
-		});
-		^ret;
-	}*/
-
-/*	replace { |index, line|
-		var ret = this.prepareReplace(index: index, line: line);
-		ret.commit;
-		SystemClock.sched(ret.time, {ret.cleanup});
-		^ret;
-	}*/
 
 	setFadeTime { |index, time|
 		dict[order[index]].proxy.fadeTime = time;
@@ -1165,15 +1089,9 @@ PTScriptNet {
 
 	commit { |cb|
 		var outEntry = dict[newOrder.last];
-		var connectOut = false;
 		if (argProxies == nil, {
+			Post << "INITIALIZING ARG PROXIES\n";
 			this.initArgProxies;
-		});
-		// We need to synchronously make an output proxy so instantiate() has a hook to sink its teeth into.
-		if (outEntry.proxy == nil, {
-			Post << "Need to set up out entry " << outEntry << "\n";
-			outEntry.proxy = this.newProxy(PTScriptNet.nodeOf(outEntry).rate);
-			connectOut = true;
 		});
 		^Routine.new({
 			var freeProxies = List.new;
@@ -1186,6 +1104,7 @@ PTScriptNet {
 			var entriesToLeaveBehind;
 			var deferredConnections = List.new;
 			// Stage 1: allocate all the new node proxies, and connect them together.
+			Post << "Beginning commit routine for scriptNet " << id << "\n";
 			newOrder.do { |id, idx|
 				var entry = dict[id];
 				var node = PTScriptNet.nodeOf(entry);
@@ -1194,10 +1113,6 @@ PTScriptNet {
 				var proxyIsNew = false;
 				var oldPreviousWasDifferent = false;
 				case (
-					{(id == "out") && connectOut}, {
-						Post << "new proxy for " << idx << " due to it being our output previously set up\n";
-						proxyIsNew = true;
-					},
 					{entry.proxy == nil}, {
 						// New entry
 						entry['proxy'] = this.newProxy(node.rate);
@@ -1215,6 +1130,7 @@ PTScriptNet {
 						proxyIsNew = true;
 						Post << "new proxy for " << idx << " due to rate change\n";
 					},
+					{ oldIdx == nil }, {},
 					{ (oldIdx != nil) && (oldIdx > 0) && (order[oldIdx-1] != prevId) }, {
 						// Possibly removed entry
 						oldPreviousWasDifferent = true;
@@ -1240,6 +1156,8 @@ PTScriptNet {
 			newOrder.do { |id|
 				var entry = dict[id];
 				if (entry.newNode != nil, {
+					Post << "Committing new node " << entry.newNode << "\n";
+					entry.newNode.commit;
 					Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
 					Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
@@ -1397,9 +1315,18 @@ PTScriptOp : PTOp {
 		^[net];
 	}
 
+	commit { |args, resources|
+		var net = resources[0];
+		Post << "Committing args " << args << "\n";
+		args.do { |a|
+			a.commit;
+		};
+		Post << "Committing net " << net << "\n";
+		net.commit.do { |w| w.yield };
+	}
+
 	instantiate { |args, resources|
 		var net = resources[0];
-		net.commit.play;
 		^switch (net.out.rate,
 			\audio, { net.out.ar },
 			\control, { net.out.kr },
@@ -1649,24 +1576,24 @@ PT {
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
 	}
 
-	replace { |script, index, line|
-		scripts[script].replace(index, line, topLevel: true);
+	replace { |script, index, line, topLevel=true, callback|
+		scripts[script].replace(index, line, topLevel: topLevel, callback: callback);
 	}
 
-	insertPassthrough { |script, index|
-		scripts[script].insertPassthrough(index);
+	insertPassthrough { |script, index, topLevel=true, callback|
+		scripts[script].insertPassthrough(index, topLevel: topLevel, callback: callback);
 	}
 
 	setParam { |param, v|
 		param_busses[param].value = v;
 	}
 
-	removeAt { |script, index|
-		scripts[script].removeAt(index, topLevel: true);
+	removeAt { |script, index, topLevel, callback|
+		scripts[script].removeAt(index, topLevel: topLevel, callback:callback);
 	}
 
-	add { |script, line, initialLoad=false|
-		scripts[script].add(line, topLevel: initialLoad.not);
+	add { |script, line, topLevel=true, callback|
+		scripts[script].add(line, topLevel: topLevel, callback: callback);
 	}
 
 	printOn { | stream |
@@ -1699,7 +1626,7 @@ PT {
 		main.free;
 		Post << "Clear scripts\n";
 		scripts.do { |s|
-			s.clear(topLevel: true, callback: latch);
+			s.clear(topLevel: false, callback: latch);
 		};
 
 	}
@@ -1756,7 +1683,7 @@ PT {
 	}
 
 	*zeroNode {
-		PTNode.new(PTLiteral.new(), [0])
+		^PTNode.new(PTLiteral.new(0), [])
 	}
 
 	*randId {
@@ -1783,35 +1710,45 @@ Engine_Phonotype : CroneEngine {
 		var luaOscAddr = NetAddr("localhost", luaOscPort);
 		var executeAndReport = { |i, s, f, msg=nil|
 			var e = nil;
+			var cb = {
+				// The "/report" message is:
+				// int - request id, the one that made us report on it
+				// int - script that we're reporting about, 0-indexed
+				// string - error, if any
+				// string - current newline-separated lines of that script
+				luaOscAddr.sendMsg("/report", i, s, (e ? msg ? ""), "".catList(pt.scripts[s].lines.collect({ |l| l ++ "\n" })));
+			};
 			try {
-				f.value;
+				f.value(cb);
 			} { |err|
 				e = err.errorString;
+				cb.value
 			};
-			// The "/report" message is:
-			// int - request id, the one that made us report on it
-			// int - script that we're reporting about, 0-indexed
-			// string - error, if any
-			// string - current newline-separated lines of that script
-			luaOscAddr.sendMsg("/report", i, s, (e ? msg ? ""), "".catList(pt.scripts[s].lines.collect({ |l| l ++ "\n" })));
+
 		};
 		//  :/
 		pt = PT.new(context.server);
+		pt.load("", {
+			Post << "Hooray\n";
+			pt.out.play;
+		}, {
+			Post << "Boo\n";
+		});
 
 
 		this.addCommand("insert_passthrough", "iii", { arg msg;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {pt.insertPassthrough(msg[2].asInt, msg[3].asInt)});
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb| pt.insertPassthrough(msg[2].asInt, msg[3].asInt, true, cb)});
 		});
 
 		this.addCommand("replace", "iiis", { arg msg;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
-				pt.replace(msg[2].asInt, msg[3].asInt, msg[4].asString)
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.replace(msg[2].asInt, msg[3].asInt, msg[4].asString, true, cb)
 			});
 		});
 
 		this.addCommand("add", "iis", { arg msg;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {
-				pt.add(msg[2].asInt, msg[3].asString)
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.add(msg[2].asInt, msg[3].asString, true, cb)
 			});
 		});
 
@@ -1820,7 +1757,9 @@ Engine_Phonotype : CroneEngine {
 		});
 
 		this.addCommand("remove", "iii", { arg msg;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {pt.removeAt(msg[2].asInt, msg[3].asInt)});
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.removeAt(msg[2].asInt, msg[3].asInt, true, cb)
+			});
 		});
 
 		this.addCommand("fade_time", "iiif", { arg msg;
@@ -1832,10 +1771,8 @@ Engine_Phonotype : CroneEngine {
 		});
 
 		this.addCommand("just_report", "ii", { arg msg;
-			executeAndReport.value(msg[1].asInt, msg[2].asInt, {});
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, {|cb| cb.value});
 		});
-
-		pt.out.play;
 	}
 
 	free {
@@ -1849,7 +1786,9 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 */
 
 
-// [ ] Fix race conditions
+// [x] Fix race conditions
+// [ ] Reintegrate fixed race conditions with norns
+// [ ] Adjust tests for fixed race conditions
 // [x] Each Script keeps track of its Nets in `refs`.
 // [x] Change edits to be two-phase: 1. Typecheck, 2. Commit.
 // [x] Give a Net a free method.
@@ -1864,8 +1803,10 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 // [ ] Buffer ops
 // [ ] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
 // [ ] -, /
-// [ ] Rhythm ops of some kind. *..-..*. * M 4 MEASURE # Produce the given rhythm (with differnet strength triggeres for acceents) taking 4 beats triggered by MEASURE?
+// [x] Rhythm ops of some kind.
 // [x] Norns param ops
+// [ ] Clock sync with Norns
+// [ ] Load and save from Norns
 // [ ] Norns hz, gate for basic midi
 // [ ] Envelopes: PERC, AR, ADSR
 // [ ] Sequencer ops
