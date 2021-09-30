@@ -1022,11 +1022,11 @@ PTScriptNet {
 		var i = index + 1;
 		this.assertEditing;
 		newOrder.removeAt(index);
-		if (propagate, {
-			this.stageReplace(index, next.newLine ? next.line);
+		^if (propagate, {
+			stageReplace(index, next.newLine ? next.line);
+		}, {
+			this;
 		});
-		// TODO: Or reevaluate call site?
-		^this.newOutputRate == this.outputRate
 	}
 
 	outputChanged {
@@ -1373,6 +1373,7 @@ PTScript {
 			net.startEdit;
 			net.stageAdd(line);
 		}, topLevel, callback);
+		fadeTimes.add(0.01);
 	}
 
 	validateIndex { |index, allowSize=true|
@@ -1431,7 +1432,6 @@ PTScript {
 			r.stageRemoveAt(index+1);
 		}, topLevel, callback);
 		fadeTimes.removeAt(index);
-		linesDraft = nil;
 	}
 
 	replace { |index, line, topLevel=false, callback=nil|
@@ -1444,7 +1444,6 @@ PTScript {
 			r.stageReplace(index+1, line)
 		}, topLevel, callback);
 		lines[index] = line;
-		linesDraft = nil;
 	}
 
 	setFadeTime { |index, time|
@@ -1721,7 +1720,9 @@ Engine_Phonotype : CroneEngine {
 			try {
 				f.value(cb);
 			} { |err|
+				err.reportError;
 				e = err.errorString;
+				Post << "Reporting error to user " << e << "\n";
 				cb.value
 			};
 
