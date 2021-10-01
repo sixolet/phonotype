@@ -179,11 +179,18 @@ Uses linear interpolation if it senses delay time will vary.
 
 `DEL.F` - 3 - Delay with feedback
 
-Also known as "all-pass filter".
+Also known as "Comb filter".
 
 1. Signal to delay
 2. Delay time
 3. Time to decay by -60dB
+
+`DEL.A` - 3 - All-pass filter
+
+1. Signal to delay
+2. Delay time
+3. Time to decay by -60dB
+
 
 ### Panning
 

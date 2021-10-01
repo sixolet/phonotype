@@ -526,8 +526,10 @@ PTDelayOp : PTOp {
 
 PTAllPassOp : PTOp {
 
-	*new {
-		^super.newCopyArgs("DEL.F", 3);
+	var delegateN, delegateL;
+
+	*new { |name, delegateN, delegateL|
+		^super.newCopyArgs(name, 3, delegateN, delegateL);
 	}
 
 	check { |args|
@@ -549,9 +551,9 @@ PTAllPassOp : PTOp {
 
 	instantiate { |args, resources|
 		^if (args[1].isConstant && args[2].isConstant, {
-			this.instantiateHelper(AllpassN, this.rate(args), [args[0].instantiate, args[1].max, args[1].max, args[2].max]);
+			this.instantiateHelper(delegateN, this.rate(args), [args[0].instantiate, args[1].max, args[1].max, args[2].max]);
 		}, {
-			this.instantiateHelper(AllpassL, this.rate(args), [args[0].instantiate, args[1].max, args[1].instantiate, args[2].instantiate]);
+			this.instantiateHelper(delegateL, this.rate(args), [args[0].instantiate, args[1].max, args[1].instantiate, args[2].instantiate]);
 		});
 	}
 }
@@ -933,7 +935,8 @@ PTParser {
 
 
 			"DEL" -> PTDelayOp.new,
-			"DEL.F" -> PTAllPassOp.new,
+			"DEL.F" -> PTAllPassOp.new("DEL.F", CombN, CombL),
+			"DEL.A" -> PTAllPassOp.new("DEL.A", AllpassN, AllpassL),
 
 			"SCL" -> PTScaleOp.new,
 			"UNI" -> PTUniOp.new,
@@ -1684,7 +1687,7 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, parser, <main, audio_busses, control_busses, param_busses;
+	var server, <scripts, parser, <main, audio_busses, control_busses, param_busses, out_proxy;
 
 	*new { |server|
 		SynthDef(\tick, { |bus|
@@ -1741,13 +1744,17 @@ PT {
 		this.putBusOps(ctx, "Z", control_busses[19], \control);
 
 		param_busses = List.new;
-		18.do { |i|
+		// Special parameter busses:
+		// 16 is the duration of a beat (exposed as M)
+		// 17 is the root note (exposed as ROOT)
+		// 18 is the output gain (not exposed internally)
+		19.do { |i|
 			var bus = Bus.control(server, numChannels: 2);
 			param_busses.add(bus);
 		};
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
 		ctx['PRM'] = ctx['PARAM'];
-		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16]);
+		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16], 0.1, 2);
 
 		// Set up the note operations
 		param_busses[17].value = 440;
@@ -1760,6 +1767,9 @@ PT {
 		ctx['N.MAJP'] = PTToCPSScaleOp.new("N.MAJP", param_busses[17], Scale.majorPentatonic);
 		ctx['N.MINP'] = PTToCPSScaleOp.new("N.MINP", param_busses[17], Scale.minorPentatonic);
 		ctx['N.DOR'] = PTToCPSScaleOp.new("N.DOR", param_busses[17], Scale.dorian);
+
+		// Default output gain.
+		param_busses[18].value = 0.4;
 	}
 
 	initBeats { |ctx|
@@ -1790,6 +1800,8 @@ PT {
 		var ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
+		out_proxy = NodeProxy.new(server, \audio, 2);
+		out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh };
 		scripts = Array.new(numScripts);
 		numScripts.do { |i|
 			var script = PTScript.new(scriptSize, ctx);
@@ -1865,7 +1877,10 @@ PT {
 	load { |str, callback, errCallback|
 		this.clear({
 			Post << "Done with clear\n";
-			this.loadOnly(str, callback, errCallback);
+			this.loadOnly(str, {
+				out_proxy <<> main.out;
+				callback.value;
+			}, errCallback);
 		});
 	}
 
@@ -1910,7 +1925,7 @@ PT {
 	}
 
 	out {
-		^main.out;
+		^out_proxy;
 	}
 
 	*zeroNode {
@@ -2057,7 +2072,7 @@ Engine_Phonotype : CroneEngine {
 // [ ] Load and save from Norns
 // [ ] Norns hz, gate for basic midi
 // [x] Envelopes: PERC, AR, ADSR
-// [ ] Sequencer ops
-// [ ] Sample and hold
-// [ ] Pitch ops
+// [x] Sequencer ops
+// [x] Sample and hold
+// [x] Pitch ops
 // [ ] Polyphonic midi ops???
