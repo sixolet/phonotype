@@ -65,6 +65,12 @@ Mix/add two signals
 
 Multiply/VCA/Ring modulate two signals.
 
+`-` - 2 - Subtract
+
+`\` - 2 - Divide
+
+`%` - 2 - Mod
+
 ### Oscillators
 
 `SIN` - 1 - Sine wave
@@ -446,3 +452,32 @@ in range.
 Scale 0 to 1.
 
 1. Signal to scale
+
+`FOLD` - 2 - Wavefolder
+
+The "amount to fold" signal is chosen so an envelope is a productive thing to
+put into it, and 0 is "no folding for -1 to 1 range signals". Amplitude
+decreases as folding increases so as to maintain a roughly consistent overall
+volume.
+
+1. Signal to fold
+2. Amount to fold
+
+`SINFOLD` - 2 - Sinusoidal wavefolder
+
+The "amount to fold" signal is chosen so an envelope is a productive thing to
+put into it, and 0 is "gentle folding for -1 to 1 range signals". Amplitude
+decreases as folding increases so as to maintain a roughly consistent overall
+volume.
+
+1. Signal to fold
+2. Amount to fold
+
+`CRUSH` - 2 - Bitcrusher
+
+The "amount to crush" signal is chosen so that an attenuated envelope is a
+productive thing to put into it, and 0 is "sample rate like 44k" and 1 is
+"sample rate like 440".
+
+1. Signal to crush
+2. Amount to crush
