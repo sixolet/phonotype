@@ -126,6 +126,19 @@ Cubic interpolation
 
 Noise is good dontcha know.
 
+### PRE ops
+
+`L.MIX <low> <high>: <statement>`
+
+Evaluates the statement to the right of the colon with `I` bound to each integer
+between <low> and <high> inclusive.
+
+For example, this is a drone of the first six partials of a low A:
+
+```
+L.MIX 1 6: * UNI RRAMP I / SIN * 110 I I
+```
+
 ### Filters
 
 `LPF` - 2 - Low pass filter
