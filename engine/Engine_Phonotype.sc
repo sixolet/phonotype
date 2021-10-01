@@ -200,6 +200,17 @@ PTOscOp : PTOp {
 	}
 }
 
+PTNoiseOp : PTOp {
+	var delegate;
+	*new { |name, delegate|
+		^super.newCopyArgs(name, 0, delegate);
+	}
+
+	rate {^\audio}
+
+	instantiate {^delegate.ar}
+}
+
 PTEnvOp : PTOp {
 
 	var envFunc;
@@ -302,6 +313,27 @@ PTSilenceOp : PTConst {
 	rate { |args, resources|
 		^\audio;
 	}
+}
+
+PTDelegatedOp : PTOp {
+	var c;
+
+	*new { |name, nargs, c|
+		^super.newCopyArgs(name, nargs, c);
+	}
+
+	instantiate { |args, resources|
+		^this.i(c, args);
+	}
+
+	min { |args|
+		^min(*args.collect({|x| x.min}));
+	}
+
+	max { |args|
+		^max(*args.collect({|x| x.max}));
+	}
+
 }
 
 PTFilterOp : PTOp {
@@ -812,9 +844,16 @@ PTParser {
 			"SAW" -> PTOscOp.new("SAW", 1, Saw, LFSaw),
 			"SQUARE" -> PTOscOp.new("SQUARE", 1, Pulse, LFPulse),
 			"PULSE" -> PTOscOpWidth.new("PULSE", 2, Pulse, LFPulse),
+			"RSTEP" -> PTOscOp.new("RSTEP", 1, LFDNoise0, LFNoise0),
+			"RRAMP" -> PTOscOp.new("RRAMP", 1, LFDNoise1, LFNoise1),
+			"RSMOOTH" -> PTOscOp.new("RSMOOTH", 1, LFDNoise3, LFDNoise3),
+			"WHITE" -> PTNoiseOp.new("WHITE", 0, WhiteNoise),
+			"BROWN" -> PTNoiseOp.new("BROWN", 0, BrownNoise),
+			"PINK" -> PTNoiseOp.new("PINK", 0, PinkNoise),
 
 			"LR" -> PTLROp.new,
 			"PAN" -> PTFilterOp.new("PAN", 2, Pan2),
+			"XF" -> PTDelegatedOp.new("XF", 3, XFade2),
 
 			"LPF" -> PTFilterOp.new("LPF", 2, LPF),
 			"BPF" -> PTFilterOp.new("BPF", 2, BPF),
@@ -1664,9 +1703,17 @@ PT {
 	}
 
 	initBeats { |ctx|
+		ctx[\SN] = PTRhythmOp("SN", 0, server, 0.25);
+		ctx[\SNT] = PTRhythmOp("SN", 0, server, 0.25/3);
+		ctx[\EN] = PTRhythmOp("EN", 0, server, 0.5);
+		ctx[\ENT] = PTRhythmOp("ENT", 0, server, 0.5/3);
 		ctx[\QN] = PTRhythmOp("QN", 0, server, 1);
+		ctx[\QNT] = PTRhythmOp("QNT", 0, server, 1/3);
 		ctx[\HN] = PTRhythmOp("HN", 0, server, 2);
+		ctx[\HNT] = PTRhythmOp("HNT", 0, server, 2/3);
 		ctx[\WN] = PTRhythmOp("WN", 0, server, 4);
+		ctx[\WNT] = PTRhythmOp("WN", 0, server, 4/3);
+
 		4.do { |i|
 			var beat = i + 1;
 			var name = "BT" ++ beat;
@@ -1674,6 +1721,8 @@ PT {
 			ctx[(name ++ ".&").asSymbol] = PTRhythmOp(name ++ ".&", 0, server, 4, i + 0.5);
 			ctx[(name ++ ".E").asSymbol] = PTRhythmOp(name ++ ".E", 0, server, 4, i + 0.25);
 			ctx[(name ++ ".A").asSymbol] = PTRhythmOp(name ++ ".A", 0, server, 4, i + 0.75);
+			ctx[(name ++ ".PL").asSymbol] = PTRhythmOp(name ++ ".PL", 0, server, 4, i + 0.333);
+			ctx[(name ++ ".ET").asSymbol] = PTRhythmOp(name ++ ".PL", 0, server, 4, i + 0.666);
 		}
 	}
 

@@ -99,6 +99,25 @@ Multiply/VCA/Ring modulate two signals.
 1. Frequency
 2. Width, from 0 to 1
 
+`RSTEP` - 1 - Random steps
+
+1. Frequency
+
+`RRAMP` - 1 - Random ramps
+
+Steps with linear slew
+
+1. Frequency
+
+`RSMOOTH` - 1 - Smooth random
+
+Cubic interpolation
+
+1. Frequency
+
+`WHITE`, `BROWN`, `PINK` - 0 - Colors of noise.
+
+Noise is good dontcha know.
 
 ### Filters
 
@@ -188,6 +207,7 @@ the measure. So far we're only supporting 4/4 time, but within that you can use:
 * `QN` - Trigger on every quarter note
 * `HN` - Trigger on every half note
 * `WN` - Trigger on every whole note
+* `SNT`, `ENT`, `QNT`, and so on - sixteenth note triplets, eighth note triplets, etc.
 * `B1` - Trigger on every beat-1 of a measure. `B2` triggers on every beat-2, etc.
 * `B1.E` - Trigger on the second sixteenth note of beat-1 of every measure. Also
   `B2.E`, `B1.&`, `B4.A`, and every combination like that.
@@ -265,7 +285,8 @@ Unquantized.
 * All busses are assumed to be "modular level" for range calculations. If you
   pass hz-level (3000) type numbers on them, you may end up with oscillators at
   the wrong rate. When transmitting frequency on a bus, consider transmitting it
-  as octaves.
+  as notes instead. This will avoid Phonotype being confused about the rate it should
+  end up.
 
 `A` - 0 - Audio Bus
 
@@ -386,3 +407,11 @@ in range.
 Scale 0 to 1.
 
 1. Signal to scale
+
+`XF` - 3 - Crossfade
+
+Equal-power
+
+1. A
+2. B
+3. Crossfade amount. 0 is a mix, -1 is A, 1 is B.
