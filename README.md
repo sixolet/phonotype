@@ -481,3 +481,8 @@ productive thing to put into it, and 0 is "sample rate like 44k" and 1 is
 
 1. Signal to crush
 2. Amount to crush
+
+`TANH` - 1 - Hyperbolic tangent
+
+Oh man the hyperbolic tangent is the most amazing thing you can do to any audio
+signal, and it will instantly make whatever you put through it sound gooder.
