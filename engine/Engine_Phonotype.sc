@@ -871,7 +871,8 @@ PTParser {
 	parseHelper {|tokens, pos, context|
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
-		{"^-?[0-9]+\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\.[0-9]+$".matchRegexp(tokens[pos])} {
+		{"^-?[0-9]+\\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\\.[0-9]+$".matchRegexp(tokens[pos])} {
+			Post << "Making a literal out of " << tokens[pos] << " it is " << tokens[pos].asFloat << "\n";
 			pos+1 -> PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
@@ -1916,11 +1917,6 @@ Engine_Phonotype : CroneEngine {
 }
 
 
-/**
-A PTScriptNet has LINES which have PTNodes and PTProxies
-*/
-
-
 // [x] Fix race conditions
 // [x] Reintegrate fixed race conditions with norns
 // [ ] Write a replacement for NodeProxy that doesn't restart its synth when the input is set -- use a bus on input
@@ -1948,5 +1944,6 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 // [ ] Norns hz, gate for basic midi
 // [x] Envelopes: PERC, AR, ADSR
 // [ ] Sequencer ops
+// [ ] Sample and hold
 // [ ] Pitch ops
 // [ ] Polyphonic midi ops???
