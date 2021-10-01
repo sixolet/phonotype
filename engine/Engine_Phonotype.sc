@@ -745,7 +745,8 @@ PTLazyBus {
 
 	get {
 		if (bus == nil, {
-			bus = Bus.new(rate, numChannels: 2, server: server);
+			bus = Bus.alloc(rate, numChannels: 2, server: server);
+			Post << "I just made a new bus man and it is like " << bus << "\n";
 		});
 		^bus;
 	}
@@ -781,17 +782,15 @@ PTNamedBusSendOp : PTOp {
 
 PTNamedLazyBusSendOp : PTNamedBusSendOp {
 
-	var rate, bus;
-
-	*new { |name, rate, bus|
-		^super.newCopyArgs(name, 1, rate, bus);
-	}
-
 	instantiate { |args, resources|
 		var a = PTScriptNet.maybeMakeStereo(args[0].instantiate);
+		var b = bus.get;
+		if (b == nil, {
+			Error.new("Oh no bus nil " ++ bus ++ " and its get "  ++ b).throw;
+		});
 		^if (rate == \audio,
-			{ Out.ar(bus.get, a); a},
-			{ Out.kr(bus.get, a); a});
+			{ Out.ar(b, a); a},
+			{ Out.kr(b, a); a});
 	}
 }
 
@@ -872,7 +871,6 @@ PTParser {
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\\.[0-9]+$".matchRegexp(tokens[pos])} {
-			Post << "Making a literal out of " << tokens[pos] << " it is " << tokens[pos].asFloat << "\n";
 			pos+1 -> PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite)
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
@@ -930,7 +928,7 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var server, parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, jBus, kBus;
+	var server, parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus;
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
@@ -982,7 +980,7 @@ PTScriptNet {
 			if (
 				a != nil,
 				{
-					Post << "Setting arg source to " << a << "\n";
+					// Post << "Setting arg source to " << a << "\n";
 					n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) };
 				},
 				{ n.source = {0.0} }
@@ -1032,6 +1030,8 @@ PTScriptNet {
 	init { |l|
 		if (script != nil, {script.refs[id] = this});
 		this.startEdit;
+		jBus = PTLazyBus.new(server, \audio);
+		kBus = PTLazyBus(server, \control);
 		if (script != nil, {
 			Post << "Initializing network from script " << script << script.linesOrDraft << "\n";
 			script.linesOrDraft.do { |x|
@@ -1041,8 +1041,6 @@ PTScriptNet {
 		}, {
 			l.do { |x| this.stageAdd(x) };
 		});
-		jBus = PTLazyBus.new(server, \audio);
-		kBus = PTLazyBus(server, \control);
 	}
 
 	lines {
@@ -1110,6 +1108,10 @@ PTScriptNet {
 
 	outputRate {
 		^dict[order.last].node.rate;
+	}
+
+	rate {
+		^(this.newOutputRate ? this.outputRate);
 	}
 
 	stageRemoveAt { |index|
@@ -1216,7 +1218,10 @@ PTScriptNet {
 						// New entry
 						entry['proxy'] = this.newProxy(node.rate);
 						proxyIsNew = true;
-						// Post << "new proxy for " << idx << " due to newness\n";
+						if (node.rate == nil, {
+							Post << "Nil rate node!! " << node << "\n";
+						});
+						// Post << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 					},
 					{entry.proxy.rate != node.rate}, {
 						var oldFadeTime = entry.proxy.fadeTime;
@@ -1227,7 +1232,7 @@ PTScriptNet {
 						entry['proxy'] = this.newProxy(node.rate);
 						entry.proxy.fadeTime = oldFadeTime;
 						proxyIsNew = true;
-						// Post << "new proxy for " << idx << " due to rate change\n";
+						// Post << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 					},
 					{ oldIdx == nil }, {},
 					{ (oldIdx != nil) && (oldIdx > 0) && (order[oldIdx-1] != prevId) }, {
@@ -1259,7 +1264,7 @@ PTScriptNet {
 					entry.newNode.commit;
 					// Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
+					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
 					lastFadeTime = entry.proxy.fadeTime;
@@ -1407,7 +1412,7 @@ PTScriptOp : PTOp {
 
 	rate { |args, resources|
 		var net = resources[0];
-		^net.out.rate;
+		^net.rate;
 	}
 
 	alloc { |args, callSite|
@@ -1786,8 +1791,8 @@ PT {
 		Post << "SCRIPT CHUNKS " << scriptChunks << "\n";
 		this.loadHelper(scriptChunks, 0, {
 			if (this.out.rate != \audio, {
-				this.clear;
-				this.init;
+				//this.clear;
+				//this.init;
 				errCallback.value(PTCheckError.new("Output of loaded script was not audio"));
 			}, {
 				callback.value;
