@@ -1979,6 +1979,7 @@ PT {
 		};
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
 		ctx['PRM'] = ctx['PARAM'];
+		ctx['P'] = ctx['PARAM'];
 		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16], 0.1, 2);
 
 		// Set up the note operations
@@ -2287,10 +2288,10 @@ Engine_Phonotype : CroneEngine {
 // [x] Check for various leaks
 // [x] When a Script is called, that generates a new Net. Link the Script to the Net, so it can edit the net when called. Keep the net in a per-line `resources` slot. On replacing or deleting a line, free all old `resources` after the xfade time.
 // [x] Busses, both private and global
-// [ ] Output stage
+// [x] Output stage
 // [ ] Buffer ops
-// [ ] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
-// [ ] -, /
+// [x] TANH, FOLD, CLIP, SOFTCLIP, SINEFOLD
+// [x] -, /
 // [x] Rhythm ops of some kind.
 // [x] Norns param ops
 // [x] Clock sync with Norns
@@ -2300,4 +2301,6 @@ Engine_Phonotype : CroneEngine {
 // [x] Sequencer ops
 // [x] Sample and hold
 // [x] Pitch ops
+// [x] L.MIX
+// [ ] L.SERIES
 // [ ] Polyphonic midi ops???
