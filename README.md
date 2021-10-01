@@ -5,6 +5,7 @@ It is like Teletype but for sound.
 To use PHONOTYPE:
 
 * Install it onto Norns
+* Restart the Norns
 * Unplug keyboard from Teletype
 * Plug keyboard into Norns
 * Select PHONOTYPE
