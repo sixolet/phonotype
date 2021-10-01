@@ -376,6 +376,26 @@ PTPlusOp : PTOp {
 
 }
 
+PTMixOp : PTOp {
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^if (this.rate(args, resources) == \audio, {
+			Mix.ar(iargs);
+		}, {
+			Mix.kr(iargs);
+		});
+	}
+
+	min { |args, resources|
+		^args.sum {|i| i.min};
+	}
+
+	max { |args, resources|
+		^args.sum {|i| i.max};
+	}
+}
+
 PTMinusOp : PTOp {
 	*new { |name, nargs|
 		^super.newCopyArgs(name, nargs);
@@ -1122,9 +1142,42 @@ PTParser {
 	parse { |str, context=nil|
 		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
-		var tokens = s.split($ );
-		var a = this.parseHelper(tokens, 0, ctx);
-		var end = a.key;
+		var sides = s.split($:);
+		var preTokens, a, end, tokens;
+		if (sides.size == 1, {
+			tokens = sides[0].split($ );
+			a = this.parseHelper(tokens, 0, ctx);
+			end = a.key;
+		}, {
+			tokens = sides[1].split($ );
+			preTokens = sides[0].split($ );
+			case
+			{preTokens[0] == "L.MIX"} {
+				var low = this.parseHelper(preTokens, 1, ctx);
+				var high = this.parseHelper(preTokens, low.key, ctx);
+				var results = List.new;
+				Post << "low " << low << " high " << high << "\n";
+				if (low.value.isConstant.not || high.value.isConstant.not || (high.value.min <= low.value.min), {
+					PTParseError.new("L.MIX takes two constants").throw;
+				});
+				if (high.key < preTokens.size, {
+					PTParseError.new("Expected :, found " ++ preTokens[high.key]).throw;
+				});
+				(1 + high.value.min - low.value.min).do { |x|
+					var i = x + low.value.min;
+					var subctx = (I: PTConst.new("I", i));
+					var elt;
+					subctx.parent = ctx;
+					elt = this.parseHelper(tokens, 0, subctx);
+					end = elt.key;
+					results.add(elt.value);
+				};
+				a = (end -> PTNode.new(PTMixOp.new("L.MIX", results.size), results, ctx['callSite']));
+			}
+			{true} {
+				PTParseError.new("Unknown PRE: " ++ preTokens[0]).throw;
+			};
+		});
 		while({end < tokens.size}, {
 			if (tokens[end] != "", {
 				PTParseError.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
