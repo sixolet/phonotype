@@ -669,20 +669,51 @@ PTBusSendOp : PTOp {
 	}
 }
 
+PTToCPSOp : PTOp {
+
+	var rootBus;
+
+	*new { |name, rootBus|
+		^super.newCopyArgs(name, 1, rootBus);
+	}
+
+	min { ^0.1}
+	max { ^10000 }
+
+	instantiate { |args, resources|
+		^(rootBus.kr.cpsmidi + args[0].instantiate).midicps;
+	}
+}
+
+PTToCPSScaleOp : PTToCPSOp {
+	var scale;
+	*new { |name, rootBus, scale|
+		^super.newCopyArgs(name, 1, rootBus, scale);
+	}
+
+	instantiate { |args, resources|
+		var toKey = DegreeToKey.kr(
+			scale.as(LocalBuf),
+			args[0].instantiate,
+			scale.stepsPerOctave);
+		^(rootBus.kr.cpsmidi + toKey).midicps;
+	}
+}
+
 PTNamedBusOp : PTOp {
 
-	var rate, bus;
+	var rate, bus, min, max;
 
-	*new { |name, rate, bus|
-		^super.newCopyArgs(name, 0, rate, bus);
+	*new { |name, rate, bus, min= -10, max=10|
+		^super.newCopyArgs(name, 0, rate, bus, min, max);
 	}
 
 	min { |args, resources|
-		^-10;
+		^min;
 	}
 
 	max { |args, resources|
-		^10;
+		^max;
 	}
 
 	instantiate { |args, resources|
@@ -696,10 +727,8 @@ PTNamedBusOp : PTOp {
 
 PTNamedLazyBusOp : PTNamedBusOp {
 
-	var rate, bus;
-
-	*new { |name, rate, bus|
-		^super.newCopyArgs(name, 0, rate, bus);
+	*new { |name, rate, bus, min= -10, max=10|
+		^super.newCopyArgs(name, 0, rate, bus, min, max);
 	}
 
 	instantiate { |args, resources|
@@ -1607,13 +1636,25 @@ PT {
 		this.putBusOps(ctx, "Z", control_busses[19], \control);
 
 		param_busses = List.new;
-		17.do { |i|
+		18.do { |i|
 			var bus = Bus.control(server, numChannels: 2);
 			param_busses.add(bus);
 		};
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
 		ctx['PRM'] = ctx['PARAM'];
 		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16]);
+
+		// Set up the note operations
+		param_busses[17].value = 440;
+		ctx['ROOT'] = PTNamedBusOp.new("ROOT", \control, param_busses[17], 20, 10000);
+		ctx['N'] = PTToCPSOp.new("N", param_busses[17]);
+		ctx['N.QT'] = PTToCPSScaleOp.new("N.QT", param_busses[17], Scale.chromatic);
+		ctx['N.MAJ'] = PTToCPSScaleOp.new("N.MAJ", param_busses[17], Scale.major);
+		ctx['N.MIN'] = PTToCPSScaleOp.new("N.MIN", param_busses[17], Scale.minor);
+		ctx['N.HM'] = PTToCPSScaleOp.new("N.HM", param_busses[17], Scale.harmonicMinor);
+		ctx['N.MAJP'] = PTToCPSScaleOp.new("N.MAJP", param_busses[17], Scale.majorPentatonic);
+		ctx['N.MINP'] = PTToCPSScaleOp.new("N.MINP", param_busses[17], Scale.minorPentatonic);
+		ctx['N.DOR'] = PTToCPSScaleOp.new("N.DOR", param_busses[17], Scale.dorian);
 	}
 
 	initBeats { |ctx|
@@ -1864,6 +1905,8 @@ Engine_Phonotype : CroneEngine {
 			}, {
 				TempoClock.default.beats = TempoClock.default.beats + (0.05 * nudge);
 			});
+			// Set M to be the duration of a beat.
+			pt.setParam(16, 1/tempo);
 		});
 	}
 
@@ -1903,6 +1946,7 @@ A PTScriptNet has LINES which have PTNodes and PTProxies
 // [x] Clock sync with Norns
 // [ ] Load and save from Norns
 // [ ] Norns hz, gate for basic midi
-// [ ] Envelopes: PERC, AR, ADSR
+// [x] Envelopes: PERC, AR, ADSR
 // [ ] Sequencer ops
+// [ ] Pitch ops
 // [ ] Polyphonic midi ops???

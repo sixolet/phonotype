@@ -228,6 +228,32 @@ Exponential shape.
 4. Sustain level
 5. Relase time
 
+### Pitch
+
+All pitch ops are relative to the root: a note of 0 is always the root.
+
+`ROOT` - 0 - Root, in CPS.
+
+Default 440, set in parameters.
+
+`N` - 1 - Half-steps to CPS.
+
+Unquantized.
+
+`N.QT` - 1 - Half-steps to CPS, quantized.
+
+`N.MAJ` - 1 - Scale degrees to CPS, major
+
+`N.MIN` - 1 - Scale degrees to CPS, minor
+
+`N.HM` - 1 - Scale degrees to CPS, harmonic minor
+
+`N.MAJP` - 1 - Scale degrees to CPS, major pentatonic
+
+`N.MINP` - 1 - Scale degrees to CPS, minor pentatonic
+
+`N.DOR` - 1 - Scale degrees to CPS, dorian
+
 ### Busses
 
 * Busses are the one major place where the underlying Supercollider rates get
