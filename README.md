@@ -384,6 +384,10 @@ Theoretical. I have not tried it. It might work.
 
 `SEQ3`, `SEQ4`, `SEQ5` - Similar for various numbers of inputs
 
+`S+H` - 2 - Sample-and-hold
+
+1. Signal to sample
+2. Sample trigger
 
 `XF` - 3 - Crossfade
 
