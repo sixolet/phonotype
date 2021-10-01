@@ -365,6 +365,34 @@ rate - it will be whatever rate the previous line was.
 
 Theoretical. I have not tried it. It might work.
 
+### Sequencing
+
+`SEL2` - 3 - Select by value from two inputs
+
+1. Selector
+2. A
+3. B
+
+`SEL3`, `SEL4`, `SEL5` - Select from various numbers of inputs
+
+`SEQ2` - 4 - Sequential switch/Sequencer
+
+1. Advance trigger
+2. Reset trigger
+3. Value 1
+4. Value 2
+
+`SEQ3`, `SEQ4`, `SEQ5` - Similar for various numbers of inputs
+
+
+`XF` - 3 - Crossfade
+
+Equal-power
+
+1. A
+2. B
+3. Crossfade amount. 0 is a mix, -1 is A, 1 is B.
+
 ### Scripts
 
 You call a script by prepending its number with a `$` (and no space). You can
@@ -407,11 +435,3 @@ in range.
 Scale 0 to 1.
 
 1. Signal to scale
-
-`XF` - 3 - Crossfade
-
-Equal-power
-
-1. A
-2. B
-3. Crossfade amount. 0 is a mix, -1 is A, 1 is B.

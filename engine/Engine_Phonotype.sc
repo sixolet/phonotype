@@ -556,6 +556,55 @@ PTAllPassOp : PTOp {
 	}
 }
 
+PTSelectOp : PTOp {
+	*new { |name, nargs|
+		^super.newCopyArgs(name, nargs);
+	}
+
+	min { |args|
+		^min(*args[1..].collect({|x| x.min}));
+	}
+
+	max { |args|
+		^max(*args[1..].collect({|x| x.max}));
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^if( this.rate == \audio, {
+			Select.ar(iargs[0], iargs[1..]);
+		}, {
+			Select.kr(iargs[0], iargs[1..]);
+		});
+	}
+
+}
+
+PTSequenceOp : PTOp {
+	*new { |name, nargs|
+		^super.newCopyArgs(name, nargs);
+	}
+
+	min { |args|
+		^min(*args[1..].collect({|x| x.min}));
+	}
+
+	max { |args|
+		^max(*args[1..].collect({|x| x.max}));
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		var st = Stepper.kr(iargs[0], iargs[1], min: 0, max: nargs-3);
+		^if( this.rate == \audio, {
+			Select.ar(st, iargs[2..]);
+		}, {
+			Select.kr(st, iargs[2..]);
+		});
+	}
+
+}
+
 
 PTScaleOp : PTOp {
 	*new {
@@ -853,7 +902,6 @@ PTParser {
 
 			"LR" -> PTLROp.new,
 			"PAN" -> PTFilterOp.new("PAN", 2, Pan2),
-			"XF" -> PTDelegatedOp.new("XF", 3, XFade2),
 
 			"LPF" -> PTFilterOp.new("LPF", 2, LPF),
 			"BPF" -> PTFilterOp.new("BPF", 2, BPF),
@@ -871,6 +919,18 @@ PTParser {
 			"AR.L" -> PTAREnvOp.new("AR.L", 3, {|a| Env.perc(a, 1-a, curve: 0)}),
 			"AR.C" -> PTAREnvOp.new("AR.C", 4, {|a, c| Env.perc(a, 1-a, curve: c)}),
 			"ADSR" -> PTEnvOp.new("ADSR", 5, {|a, d, s, r| Env.adsr(a, d, s, r)}),
+
+			"XF" -> PTDelegatedOp.new("XF", 3, XFade2),
+			"S+H" -> PTFilterOp.new("S+H", 2, Latch),
+			"SEL2" -> PTSelectOp.new("SEL2", 3),
+			"SEL3" -> PTSelectOp.new("SEL3", 4),
+			"SEL4" -> PTSelectOp.new("SEL4", 5),
+			"SEL5" -> PTSelectOp.new("SEL5", 6),
+			"SEQ2" -> PTSequenceOp.new("SEQ2", 4),
+			"SEQ3" -> PTSequenceOp.new("SEQ3", 5),
+			"SEQ4" -> PTSequenceOp.new("SEQ4", 6),
+			"SEQ5" -> PTSequenceOp.new("SEQ5", 7),
+
 
 			"DEL" -> PTDelayOp.new,
 			"DEL.F" -> PTAllPassOp.new,
