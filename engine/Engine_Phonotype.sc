@@ -376,6 +376,26 @@ PTPlusOp : PTOp {
 
 }
 
+PTMinusOp : PTOp {
+	*new { |name, nargs|
+		^super.newCopyArgs(name, nargs);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] - iargs[1];
+	}
+
+	min { |args, resources|
+		^args[0].min - args[1].max;
+	}
+
+	max { |args, resources|
+		^args[0].max - args[1].min;
+	}
+
+}
+
 PTTimesOp : PTOp {
 	*new {
 		^super.newCopyArgs("*", 2);
@@ -404,6 +424,63 @@ PTTimesOp : PTOp {
 			args[0].max*args[1].max
 
 		].maxItem;
+	}
+}
+
+PTDivOp : PTOp {
+	*new {
+		^super.newCopyArgs("/", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] / iargs[1];
+	}
+
+	check { |args, resources|
+		var denom = args[1];
+		if ( (denom.min == 0) || (denom.max == 0) || (denom.min.sign != denom.max.sign), {
+			PTCheckError.new("Denominator range must not include 0").throw;
+		});
+	}
+
+	min { |args, resources|
+		^[
+			args[0].min/args[1].min,
+			args[0].min/args[1].max,
+			args[0].max/args[1].min,
+			args[0].max/args[1].max
+
+		].minItem;
+	}
+
+	max { |args, resources|
+		^[
+			args[0].min/args[1].min,
+			args[0].min/args[1].max,
+			args[0].max/args[1].min,
+			args[0].max/args[1].max
+
+		].maxItem;
+	}
+}
+
+PTModOp : PTOp {
+	*new {
+		^super.newCopyArgs("%", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] % iargs[1];
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^args[1].max;
 	}
 }
 
@@ -683,6 +760,93 @@ PTUniOp : PTOp {
 	}
 }
 
+PTFloorOp : PTOp {
+	*new {
+		^super.newCopyArgs("FLOOR", 1);
+	}
+
+	min { |args, resources|
+		^args[0].min.floor;
+	}
+
+	max { |args, resources|
+		^args[0].max.floor;
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.floor;
+	}
+}
+
+PTTanhOp : PTOp {
+	*new {
+		^super.newCopyArgs("TANH", 1);
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.tanh;
+	}
+}
+
+PTFoldOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("FOLD", 2);
+	}
+
+	*foldval { |x| ^(0.2/(0.2 + x.abs)) }
+
+	min { |args|
+		^args[0].min;
+	}
+
+	max { |args|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.fold2(PTFoldOp.foldval(args[1].instantiate));
+	}
+}
+
+PTSinFoldOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("SINFOLD", 2);
+	}
+
+	*foldval { |x| ^ pi *  x.exp }
+
+	instantiate { |args, resources|
+		var f = PTSinFoldOp.foldval(args[1].instantiate);
+		^( (f*args[0].instantiate).sin) / f;
+	}
+}
+
+PTCrushOp : PTOp {
+
+	*new {
+		^super.newCopyArgs("CRUSH", 2);
+	}
+
+	*foldval { |x| ^44100.0 * (0.01/(0.01 + x.abs)) }
+
+	min { |args|
+		^args[0].min;
+	}
+
+	max { |args|
+		^args[0].max;
+	}
+
+	rate { ^\audio }
+
+	instantiate { |args, resources|
+		var f = PTCrushOp.foldval(args[1].instantiate);
+		^SmoothDecimator.ar(args[0].instantiate, f);
+	}
+}
+
 PTBusOp : PTOp {
 
 	var rate, busses, min, max;
@@ -940,10 +1104,18 @@ PTParser {
 
 			"SCL" -> PTScaleOp.new,
 			"UNI" -> PTUniOp.new,
+			"FLOOR" -> PTFloorOp.new,
+			"TANH" -> PTTanhOp.new,
+			"FOLD" -> PTFoldOp.new,
+			"SINFOLD" -> PTSinFoldOp.new,
+			"CRUSH" -> PTCrushOp.new,
 
 			"SILENCE" -> PTSilenceOp.new,
 			"+" -> PTPlusOp.new("+", 2),
 			"*" -> PTTimesOp.new(),
+			"-" -> PTMinusOp.new("-", 2),
+			"/" -> PTDivOp.new(),
+			"%" -> PTModOp.new(),
 		]));
 	}
 

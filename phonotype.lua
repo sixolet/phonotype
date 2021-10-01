@@ -155,6 +155,10 @@ function script_num_rep(n)
 end
 
 function init()
+  params:add_control("gain","gain",controlspec.new(0.1,10,'exp',0,0.5,'')) 
+  params:set_action("gain", function(x) engine.set_param(18, x) end)  
+  params:add_number("root","root",20,880,440) 
+  params:set_action("root", function(x) engine.set_param(17, x) end)
   local param_spec = controlspec.new(0,1,'lin',1/127.0,0.5,'')
   for i=0,15,1 do
     local param_id = string.format("param%i", i)
@@ -164,8 +168,6 @@ function init()
       param_spec)
     params:set_action(param_id, function(x) engine.set_param(i, x) end)
   end
-  params:add_number("root","root",20,880,440)
-  params:set_action("root", function(x) engine.set_param(17, x) end)
   params:bang()
   sync_routine = clock.run(sync_every_beat)
 end
