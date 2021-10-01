@@ -1,5 +1,5 @@
--- many tomorrows
--- norns study 1
+-- PHONOTYPE
+-- phonotype exists between keyboard and speaker
 
 engine.name = "Phonotype"
 
@@ -164,9 +164,20 @@ function init()
       param_spec)
     params:set_action(param_id, function(x) engine.set_param(i, x) end)
   end
+  params:add_number("root","root",20,880,440)
+  params:set_action("root", function(x) engine.set_param(17, x) end)
   params:bang()
- 
-  print("the end and the beginning they are the same.")
+  sync_routine = clock.run(sync_every_beat)
+end
+
+function sync_every_beat()
+  while true do
+    clock.sync(1)
+    b = clock.get_beats()
+    t = clock.get_tempo()
+    -- print("Beat", b)
+    engine.tempo_sync(b, t/60.0)
+  end
 end
 
 function spaces_at_end(s)
