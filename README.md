@@ -116,7 +116,7 @@ Steps with linear slew
 
 1. Frequency
 
-`RSMOOTH` - 1 - Smooth random
+`RSMOOTH`/`RSM` - 1 - Smooth random
 
 Cubic interpolation
 
@@ -129,6 +129,8 @@ Noise is good dontcha know.
 ### PRE ops
 
 `L.MIX <low> <high>: <statement>`
+
+`L.M <low> <high>: <statement>`
 
 Evaluates the statement to the right of the colon with `I` bound to each integer
 between <low> and <high> inclusive.
@@ -238,6 +240,26 @@ the measure. So far we're only supporting 4/4 time, but within that you can use:
 * `B1` - Trigger on every beat-1 of a measure. `B2` triggers on every beat-2, etc.
 * `B1.E` - Trigger on the second sixteenth note of beat-1 of every measure. Also
   `B2.E`, `B1.&`, `B4.A`, and every combination like that.
+
+`EVERY`/ `EV` - 2 - Do every N beats
+
+1. Trigger every this number of beats.
+2. Offset, in beats. 0 is guaranteed to be on a barline.
+
+`PROB` - 2 - Trigger chance
+
+1. Chance to pass the trigger
+2. Trigger to maybe pass
+
+`DUR` - 2 - Trigger to gate
+
+1. Trigger in
+2. Duration of gate
+
+`CDIV` - 2 - Clock divider
+
+1. Trigger in
+2. Ratio
 
 ### Envelopes
 

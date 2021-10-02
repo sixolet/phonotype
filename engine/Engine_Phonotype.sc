@@ -206,9 +206,14 @@ PTNoiseOp : PTOp {
 		^super.newCopyArgs(name, 0, delegate);
 	}
 
-	rate {^\audio}
+	rate {
+		^\audio;
+	}
 
-	instantiate {^delegate.ar}
+	instantiate {
+		Post << "Instantiating the " << delegate << "\n";
+		^delegate.ar;
+	}
 }
 
 PTEnvOp : PTOp {
@@ -336,6 +341,27 @@ PTDelegatedOp : PTOp {
 
 }
 
+PT01DelegatedOp : PTOp {
+	var c;
+
+	*new { |name, nargs, c|
+		^super.newCopyArgs(name, nargs, c);
+	}
+
+	instantiate { |args, resources|
+		^this.i(c, args);
+	}
+
+	min { |args|
+		^0;
+	}
+
+	max { |args|
+		^1;
+	}
+
+}
+
 PTFilterOp : PTOp {
 	var c;
 
@@ -422,7 +448,8 @@ PTTimesOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		var iargs = PTOp.instantiateAll(args);
+		var iargs;
+		iargs = PTOp.instantiateAll(args);
 		^iargs[0] * iargs[1];
 	}
 
@@ -1082,9 +1109,10 @@ PTParser {
 			"RSTEP" -> PTOscOp.new("RSTEP", 1, LFDNoise0, LFNoise0),
 			"RRAMP" -> PTOscOp.new("RRAMP", 1, LFDNoise1, LFNoise1),
 			"RSMOOTH" -> PTOscOp.new("RSMOOTH", 1, LFDNoise3, LFDNoise3),
-			"WHITE" -> PTNoiseOp.new("WHITE", 0, WhiteNoise),
-			"BROWN" -> PTNoiseOp.new("BROWN", 0, BrownNoise),
-			"PINK" -> PTNoiseOp.new("PINK", 0, PinkNoise),
+			"RSM" -> PTOscOp.new("RSMOOTH", 1, LFDNoise3, LFDNoise3),
+			"WHITE" -> PTNoiseOp.new("WHITE", WhiteNoise),
+			"BROWN" -> PTNoiseOp.new("BROWN", BrownNoise),
+			"PINK" -> PTNoiseOp.new("PINK", PinkNoise),
 
 			"LR" -> PTLROp.new,
 			"PAN" -> PTFilterOp.new("PAN", 2, Pan2),
@@ -1117,6 +1145,9 @@ PTParser {
 			"SEQ4" -> PTSequenceOp.new("SEQ4", 6),
 			"SEQ5" -> PTSequenceOp.new("SEQ5", 7),
 
+			"CDIV" -> PTFilterOp.new("CDIV", 2, PulseDivider),
+			"DUR" -> PT01DelegatedOp("DUR", 2, Trig1),
+			"PROB" -> PT01DelegatedOp("PROB", 2, CoinGate),
 
 			"DEL" -> PTDelayOp.new,
 			"DEL.F" -> PTAllPassOp.new("DEL.F", CombN, CombL),
@@ -1152,7 +1183,7 @@ PTParser {
 			tokens = sides[1].split($ );
 			preTokens = sides[0].split($ );
 			case
-			{preTokens[0] == "L.MIX"} {
+			{(preTokens[0] == "L.MIX") || (preTokens[0] == "L.M")} {
 				var low = this.parseHelper(preTokens, 1, ctx);
 				var high = this.parseHelper(preTokens, low.key, ctx);
 				var results = List.new;
@@ -1722,6 +1753,55 @@ PTRhythmOp : PTOp {
 	}
 }
 
+PTEveryOp : PTOp {
+	var server;
+
+	*new { |name, server|
+		^super.newCopyArgs(name, 2, server)
+	}
+
+	min { ^0 }
+
+	max { ^1 }
+
+	check { |args|
+		if (args[0].isConstant.not || args[1].isConstant.not, {
+			PTCheckError.new("EVERY args must be constant");
+		});
+	}
+
+	rate { ^\control }
+
+	alloc { |args, callSite|
+		^[nil, nil];
+	}
+
+	instantiate { |args, resources|
+		var b, idx, esp, freer, pattern;
+		var quant = args[0].min;
+		var phase = args[1].min;
+		var q = Quant.new(quant, phase: phase);
+		if (resources[0] == nil, {
+			b = Bus.control(server, numChannels: 1);
+			pattern = Pbind(\instrument, \tick, \dur, quant, \bus, b.index);
+			Post << "Bus " << b << " server " << server << "\n";
+			idx = b.index;
+			if (quant == 0, { Error.new("OOPOS quant zero").throw; });
+			esp = pattern.play(TempoClock.default, quant: q);
+			Post << "Starting beat" << idx << "\n";
+			freer = PTFreer({
+				Post << "Stopping beat" << idx << "\n";
+				esp.stop;
+			});
+			resources[0] = b;
+			resources[1] = freer;
+		}, {
+			b = resources[0];
+		});
+		^b.kr;
+	}
+}
+
 PTScriptOp : PTOp {
 	var server, parser, script;
 
@@ -2009,6 +2089,9 @@ PT {
 		ctx[\HNT] = PTRhythmOp("HNT", 0, server, 2/3);
 		ctx[\WN] = PTRhythmOp("WN", 0, server, 4);
 		ctx[\WNT] = PTRhythmOp("WN", 0, server, 4/3);
+
+		ctx[\EVERY] = PTEveryOp("EVERY", server);
+		ctx[\EV] = PTEveryOp("EVERY", server);
 
 		4.do { |i|
 			var beat = i + 1;

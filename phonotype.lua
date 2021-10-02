@@ -12,6 +12,7 @@ editing_script = 9
 edit_col = 1
 edit_row = 1
 editing = ""
+clipboard = ""
 
 -- This one is just a text editor
 
@@ -208,12 +209,12 @@ function redraw()
   screen.text(err_line)
   screen.move(0, 8*8-1)
   screen.text(script_num_rep(editing_script))
-  screen.move(10, 8*8-1)
+  screen.move(8, 8*8-1)
   screen.text(editing)
   screen.level(1)
   screen.blend_mode(8)
   local up_to_cursor = string.sub(editing, 1, edit_col-1)
-  screen.rect(screen.text_extents(up_to_cursor) + spaces_at_end(up_to_cursor) * 4 + 10, 56, 5, 8)
+  screen.rect(screen.text_extents(up_to_cursor) + spaces_at_end(up_to_cursor) * 4 + 8, 56, 5, 8)
   screen.fill()
   screen.rect(0, 8*(edit_row-1), 128, 8)
   screen.fill()
@@ -288,6 +289,15 @@ function keyboard.code(key, value)
         editing = model:get(editing_script, edit_row)
         edit_col = string.len(editing) + 1
       end
+    elseif key == "C" and keyboard.ctrl() then
+      clipboard = editing
+    elseif key == "X" and keyboard.ctrl() then
+      clipboard = editing
+      editing = ""
+      edit_col = 1
+    elseif key == "V" and keyboard.ctrl() then
+      editing = clipboard
+      edit_col = string.len(editing) + 1
     end
   end
   print("Now editing row:", edit_row, "col:", edit_col)
