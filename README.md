@@ -16,10 +16,10 @@ To use PHONOTYPE:
 Like Teletype, PHONOTYPE is a prefix programming language. For example:
 
 ```
-+ 1 * 2 3
++ 1 * 2 2.5
 ```
 
-Is a statement that yields the sum of 1 and the product of 2 and 3: 7.
+Is a statement that yields the sum of 1 and the product of 2 and 2.5: 6.
 
 Every operation in PHONOTYPE is *declarative*. Instead of executing, like a line
 of Teletype code, it tells the audio engine (SuperCollider) what to connect to
@@ -57,6 +57,9 @@ Each is listed as `NAME` - number of args - description
 3. Etc.
 
 ### Math
+
+Unlike Teletype, PHONOTYPE operates on floating point 
+numbers, not integers. 
 
 `+` - 2 - Add
 
