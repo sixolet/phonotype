@@ -487,7 +487,7 @@ PTDivOp : PTOp {
 	check { |args, resources|
 		var denom = args[1];
 		if ( (denom.min == 0) || (denom.max == 0) || (denom.min.sign != denom.max.sign), {
-			PTCheckError.new("Denominator range must not include 0").throw;
+			PTCheckError.new("Denominator must exclude 0").throw;
 		});
 	}
 
@@ -595,7 +595,7 @@ PTLROp : PTOp {
 
 	check { |args|
 		if (args[0].rate != args[1].rate, {
-			PTCheckError.new("LR args must be the same rate").throw;
+			PTCheckError.new("LR args must be same rate").throw;
 		});
 	}
 
@@ -1040,7 +1040,6 @@ PTLazyBus {
 	get {
 		if (bus == nil, {
 			bus = Bus.alloc(rate, numChannels: 2, server: server);
-			Post << "I just made a new bus man and it is like " << bus << "\n";
 		});
 		^bus;
 	}
@@ -1237,6 +1236,9 @@ PTParser {
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
 				var a;
+				if(p >= tokens.size, {
+					PTParseError.new(op.name ++ " expects " ++ op.nargs ++ " args").throw
+				});
 				try {
 					a = this.parseHelper(tokens, p, context);
 				} { |e|
@@ -1254,6 +1256,9 @@ PTParser {
 			var myArgs = Array.new(maxSize: op.nargs);
 			{myArgs.size < op.nargs}.while({
 				var a;
+				if(p >= tokens.size, {
+					PTParseError.new(op.name ++ " expects " ++ op.nargs ++ " args").throw
+				});
 				try {
 					a = this.parseHelper(tokens, p, context);
 				} { |e|
@@ -1273,7 +1278,7 @@ PTParser {
 			while({context != nil},{
 				context = context.parent;
 			});
-			PTParseError.new("Unknown token: " ++ tokens[pos] ++ ".").throw;
+			PTParseError.new("Unknown word: " ++ tokens[pos] ++ ".").throw;
 		};
 	}
 }
@@ -1753,6 +1758,127 @@ PTRhythmOp : PTOp {
 	}
 }
 
+PTEuclideanOp : PTOp {
+	var server;
+
+	*new { |server|
+		// Args are fill, len, offset, duration (per-beat)
+		^super.newCopyArgs("ER", 4, server)
+	}
+
+	min { ^0 }
+
+	max { ^1 }
+
+	rate { ^\control }
+
+	alloc { |args, callSite|
+		// Resources will be filled with:
+		// 0: result bus
+		// 1: length and offset bus
+		// 2: synth that sets length and offset bus
+		// 3: freer of pbind
+		^[nil, nil, nil, nil];
+	}
+
+	check { |args|
+		args[1].isConstant.not.if {
+			PTCheckError.new("ER length must be constant").throw;
+		};
+		args[3].isConstant.not.if {
+			PTCheckError.new("ER duration must be constant").throw;
+		};
+	}
+
+	mono {|x|
+		^if (x.size == 0) {x} {x[0]}
+	}
+
+	getDur { |args|
+		^args[3].min;
+	}
+
+	instantiate { |args, resources|
+		var lenInNotes = args[1].min;
+		var dur = this.getDur(args);
+		var length = lenInNotes*dur;
+		var p, b, idx, esp, freer, pattern;
+		var q = Quant.new(length);
+		var beats = (Rest(dur))!lenInNotes;
+
+		var getter = { |arr|
+			var fill = arr[0].floor.asInteger;
+			var offset = arr[1].floor.asInteger;
+			beats = (fill / lenInNotes * (0..lenInNotes - 1)).floor.differentiate.asInteger.min(1)[0] = if (fill <= 0) { 0 } { 1 };
+			beats = beats.rotate(offset);
+		};
+
+		var euclideanRoutine = Routine({
+			while {true} {
+				beats.do { |x|
+					p.get(getter);
+					if(x == 0, {
+						Rest(dur).yield;
+					}, {
+						dur.yield;
+					});
+				};
+			};
+		});
+
+		// Initialize beats with min fill and offset
+		getter.value([args[0].min, args[2].min]);
+
+		if (resources[0] == nil, {
+			b = Bus.control(server, numChannels: 1);
+			p = Bus.control(server, numChannels: 2);
+			pattern = Pbind(
+				\instrument, \tick, \dur, euclideanRoutine,
+				\bus, b.index,
+			);
+			idx = b.index;
+			esp = pattern.play(TempoClock.default, quant: q);
+			Post << "Starting euclidean" << idx << "\n";
+			freer = PTFreer({
+				Post << "Stopping euclidean" << idx << "\n";
+				esp.stop;
+			});
+			resources[0] = b;
+			resources[1] = p;
+			resources[2] = Synth.new(\euclideanSetter, [
+				\bus, p.index,
+				\fill, this.mono(args[0].instantiate),
+				\offset, this.mono(args[2].instantiate),
+			]);
+			resources[3] = freer;
+			p.get(getter);
+		}, {
+			b = resources[0];
+		});
+		^b.kr;
+	}
+}
+
+PTConstEuclideanOp : PTEuclideanOp {
+
+	var dur;
+
+	*new { |name, server, dur|
+		// Args are fill, len, offset, duration (per-beat)
+		^super.newCopyArgs(name, 3, server, dur)
+	}
+
+	getDur { |args|
+		^dur;
+	}
+
+	check { |args|
+		args[1].isConstant.not.if {
+			PTCheckError.new("ER length must be constant").throw;
+		};
+	}
+}
+
 PTEveryOp : PTOp {
 	var server;
 
@@ -1892,8 +2018,8 @@ PTScript {
 	}
 
 	validateIndex { |index, allowSize=true|
-		if (index < 0, { PTEditError.new("Index must be greater than zero").throw });
-		if (index > lines.size, { PTEditError.new("Index must be less than the current number of lines").throw });
+		if (index < 0, { PTEditError.new("Index must be > 0").throw });
+		if (index > lines.size, { PTEditError.new("Index must be < number of lines").throw });
 		if ((index == lines.size) && (allowSize.not), { PTEditError.new("Cant operate on index " ++ index).throw });
 	}
 
@@ -2000,6 +2126,10 @@ PT {
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
 		}).add;
 
+		SynthDef(\euclideanSetter, { |bus, fill, offset|
+			Out.kr(bus, [fill, offset]);
+		}).add;
+
 		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil, nil).init;
 	}
 
@@ -2092,6 +2222,13 @@ PT {
 
 		ctx[\EVERY] = PTEveryOp("EVERY", server);
 		ctx[\EV] = PTEveryOp("EVERY", server);
+
+		ctx[\ER] = PTEuclideanOp(server);
+		ctx['SN.ER'] = PTConstEuclideanOp("SN.ER", server, 0.25);
+		ctx['EN.ER'] = PTConstEuclideanOp("EN.ER", server, 0.5);
+		ctx['QN.ER'] = PTConstEuclideanOp("QN.ER", server, 1);
+
+
 
 		4.do { |i|
 			var beat = i + 1;

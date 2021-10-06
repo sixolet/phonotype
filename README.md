@@ -246,6 +246,23 @@ the measure. So far we're only supporting 4/4 time, but within that you can use:
 1. Trigger every this number of beats.
 2. Offset, in beats. 0 is guaranteed to be on a barline.
 
+`ER` - 4 - Euclidean rhythms
+
+All arguments except duration round down to the nearest integer
+
+1. Fill
+2. Length (must be constant)
+3. Offset
+4. Duration of notes (must be constant)
+
+`SN.ER`, `EN.ER`, `QN.ER` - 3 - Specific durations of euclidean rhythms
+
+Sixteenth-note euclidean rhythms, eigth-note euclidean rhythms, quarter-note euclidiean-rhythms
+
+1. Fill
+2. Length (must be constant)
+3. Offset
+
 `PROB` - 2 - Trigger chance
 
 1. Chance to pass the trigger
