@@ -222,7 +222,7 @@ function redraw()
 end
 
 function keyboard.char(character)
-  if keyboard.alt() or keyboard.ctrl() then
+  if keyboard.alt() or keyboard.alt() then
     return
   end
   -- print("ADDING .", character, ".")
@@ -269,6 +269,11 @@ function keyboard.code(key, value)
       if edit_row == 1 then
         -- pass
       else
+        if keyboard.alt() then
+            local storedLine = model:get(editing_script, edit_row - 1)
+            model:replace(editing_script, edit_row - 1, editing)
+            model:replace(editing_script, edit_row, storedLine)
+        end
         edit_row = edit_row - 1
         editing = model:get(editing_script, edit_row)
         edit_col = string.len(editing) + 1
@@ -277,6 +282,12 @@ function keyboard.code(key, value)
       if edit_row > model:script_size(editing_script) then
         edit_row = model:script_size(editing_script) + 1
       else
+        if keyboard.alt() and model:get(editing_script, edit_row + 1) ~= "" then
+          local storedLine = model:get(editing_script, edit_row + 1)
+          model:replace(editing_script, edit_row + 1, editing)
+          model:replace(editing_script, edit_row, storedLine)
+        end
+
         edit_row = edit_row + 1
         editing = model:get(editing_script, edit_row)
         edit_col = string.len(editing) + 1
@@ -289,13 +300,13 @@ function keyboard.code(key, value)
         editing = model:get(editing_script, edit_row)
         edit_col = string.len(editing) + 1
       end
-    elseif key == "C" and keyboard.ctrl() then
+    elseif key == "C" and keyboard.alt() then
       clipboard = editing
-    elseif key == "X" and keyboard.ctrl() then
+    elseif key == "X" and keyboard.alt() then
       clipboard = editing
       editing = ""
       edit_col = 1
-    elseif key == "V" and keyboard.ctrl() then
+    elseif key == "V" and keyboard.alt() then
       editing = clipboard
       edit_col = string.len(editing) + 1
     end
