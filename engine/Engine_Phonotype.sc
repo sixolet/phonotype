@@ -1584,9 +1584,10 @@ PTScriptNet {
 			var prevId = nil;
 			var prevProxyIsNew = false;
 			var connect;
-			var lastFadeTime = 0;
+			var lastProxy = nil;
 			var entriesToLeaveBehind;
 			var deferredConnections = List.new;
+			var freeFn;
 			// Stage 1: allocate all the new node proxies, and connect them together.
 			Post << "Beginning commit routine for scriptNet " << id << "\n";
 			newOrder.do { |id, idx|
@@ -1648,7 +1649,7 @@ PTScriptNet {
 					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
-					lastFadeTime = entry.proxy.fadeTime;
+					lastProxy = entry.proxy;
 					entry.line = entry.newLine;
 					entry.newNode = nil;
 					entry.newLine = nil;
@@ -1670,13 +1671,18 @@ PTScriptNet {
 			order = newOrder;
 			// Indicate we are done with everything but cleanup
 			cb.value;
-			lastFadeTime.yield;
-			// Stage 5, later: free some stuff
-			freeNodes.do({|x| x.free});
-			freeProxies.do({|x|
-				Post << "Freeing proxy\n";
-				x.clear;
-			});
+			freeFn = {
+				// Stage 5, later: free some stuff
+				freeNodes.do({|x| x.free});
+				freeProxies.do({|x|
+					Post << "Freeing proxy\n";
+					x.clear;
+				});
+			};
+			// If we needed to fade a proxy, schedule the free for after the fade.
+			if (lastProxy != nil, {
+				lastProxy.schedAfterFade(freeFn);
+			}, freeFn);
 		});
 	}
 
@@ -2520,6 +2526,17 @@ Engine_Phonotype : CroneEngine {
 				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime);
 				cb.value;
 			}, "fade time: " ++ newFadeTime.asStringPrec(3));
+		});
+
+		this.addCommand("quant", "iiii", { arg msg;
+			var prevQuant = pt.getQuant(msg[2].asInt, msg[3].asInt);
+			var prevQuantIndex = if(prevQuant < 1, {((-1 / prevQuant) + 2).round}, {prevQuant.round});
+			var newQuantIndex = msg[4].asInt + prevQuantIndex;
+			var newQuant = if (newQuantIndex <= 0, {-1 / (newQuantIndex - 2)}, {newQuantIndex});
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.setQuant(msg[2].asInt, msg[3].asInt, newQuant);
+				cb.value;
+			}, "schedule on: " ++ newQuant.asStringPrec(3));
 		});
 
 		this.addCommand("just_report", "ii", { arg msg;

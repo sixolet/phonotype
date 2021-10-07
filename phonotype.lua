@@ -331,6 +331,9 @@ function enc(n, d)
     local increment = math.pow(math.sqrt(math.sqrt(2)), d)
     engine.fade_time(PTModel.nonce, editing_script-1, edit_row-1, increment)
   end
+  if n == 3 then
+    engine.quant(PTModel.nonce, editing_script-1, edit_row-1, d)
+  end
 end
 
 
