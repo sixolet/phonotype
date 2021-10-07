@@ -1323,7 +1323,7 @@ PTScriptNet {
 		var o = newOrder ? order;
 		var idx = o.indexOf(id);
 		var prevId = o[idx-1];
-		^dict[prevId];
+		^if (prevId == nil, {dict["in"]}, {dict[prevId]});
 	}
 
 	initArgProxies {
@@ -1331,7 +1331,7 @@ PTScriptNet {
 		4.do { |i|
 			var a = args[i];
 			var n = if (callSite != nil, {
-				var p = callSite.net.newProxy;
+				var p = callSite.net.newProxy(rate: nil, fadeTime: 0, quant: 0);
 				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
 				p;
 			}, {
@@ -1370,9 +1370,10 @@ PTScriptNet {
 		^ret;
 	}
 
-	newProxy { |rate=nil|
+	newProxy { |rate=nil, fadeTime, quant|
 		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
-		ret.quant = 0.01;
+		ret.fadeTime = fadeTime;
+		ret.quant = quant;
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -1434,12 +1435,12 @@ PTScriptNet {
 
 	*nodeOf { |entry| ^entry.newNode ? entry.node }
 
-	stageAdd { |line|
+	stageAdd { |line, fadeTime, quant|
 		this.assertEditing;
-		^this.stageInsert(newOrder.size - 1, line);
+		^this.stageInsert(newOrder.size - 1, line, fadeTime, quant);
 	}
 
-	stageInsertPassthrough { |index|
+	stageInsertPassthrough { |index, fadeTime, quant|
 		var id = PT.randId;
 		var prevEntry = this[index-1];
 		var nextEntry = this[index];
@@ -1449,15 +1450,17 @@ PTScriptNet {
 			newLine: "IT",
 			newNode: parser.parse("IT", this.contextWithItRate(PTScriptNet.nodeOf(prevEntry).rate, id: id)),
 			proxy: nil,
+			fadeTime: fadeTime,
+			quant: quant,
 		);
 		this.assertEditing;
 		dict[id] = entry;
 		newOrder.insert(index, id);
 	}
 
-	stageInsert { |index, line|
+	stageInsert { |index, line, fadeTime, quant|
 		this.assertEditing;
-		this.stageInsertPassthrough(index);
+		this.stageInsertPassthrough(index, fadeTime, quant);
 		^this.stageReplace(index, line);
 	}
 
@@ -1509,9 +1512,12 @@ PTScriptNet {
 		this.assertEditing;
 		id = newOrder[idx];
 		if (id == nil, {
-			Error.new("Bad replace id " ++ idx ++ " size " ++ newOrder.size).throw
+			Error.new("Bad replace id " ++ idx ++ " size " ++ newOrder.size).throw;
 		});
 		entry = dict[id];
+		if (entry == nil, {
+			Error.new("No entry " ++ id ++ " in dict " ++ dict).throw;
+		});
 		prev = this[idx-1];
 		next = this[idx+1];
 		entry['newLine'] = line;
@@ -1533,7 +1539,19 @@ PTScriptNet {
 	}
 
 	setFadeTime { |index, time|
-		dict[order[index]].proxy.fadeTime = time;
+		var node = dict[order[index]];
+		node['fadeTime'] = time;
+		if (node.proxy != nil, {
+			node.proxy.fadeTime = time;
+		});
+	}
+
+	setQuant { |index, quant|
+		var node = dict[order[index]];
+		node['quant'] = quant;
+		if (node.proxy != nil, {
+			node.proxy.quant = quant;
+		});
 	}
 
 	abort {
@@ -1542,9 +1560,11 @@ PTScriptNet {
 			entry['newLine'] = nil;
 			entry['newNode'] = nil;
 		};
+		// At this point anything in newOrder w a newNode is *not* in order
 		newOrder.do { |id|
 			var entry = dict[id];
 			if (entry.newNode != nil, {
+				entry.newNode.free;
 				dict.removeAt(id);
 			});
 		};
@@ -1579,7 +1599,7 @@ PTScriptNet {
 				case (
 					{entry.proxy == nil}, {
 						// New entry
-						entry['proxy'] = this.newProxy(node.rate);
+						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
 						if (node.rate == nil, {
 							Post << "Nil rate node!! " << node << "\n";
@@ -1587,13 +1607,11 @@ PTScriptNet {
 						// Post << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 					},
 					{entry.proxy.rate != node.rate}, {
-						var oldFadeTime = entry.proxy.fadeTime;
 						// Rate change entry
 						// Schedule the old proxy for freeing
 						freeProxies.add(entry.proxy);
 						// Make the new one.
-						entry['proxy'] = this.newProxy(node.rate);
-						entry.proxy.fadeTime = oldFadeTime;
+						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
 						// Post << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 					},
@@ -1669,6 +1687,7 @@ PTScriptNet {
 			entry.proxy.clear;
 			entry.node.free;
 		};
+
 		argProxies.do { |p| p.clear };
 		jBus.free;
 		kBus.free;
@@ -1815,9 +1834,9 @@ PTEuclideanOp : PTOp {
 
 		var euclideanRoutine = Routine({
 			while {true} {
-				beats.do { |x|
+				beats.size.do { |i|
 					p.get(getter);
-					if(x == 0, {
+					if(beats[i] == 0, {
 						Rest(dur).yield;
 					}, {
 						dur.yield;
@@ -1845,11 +1864,13 @@ PTEuclideanOp : PTOp {
 			});
 			resources[0] = b;
 			resources[1] = p;
-			resources[2] = Synth.new(\euclideanSetter, [
-				\bus, p.index,
-				\fill, this.mono(args[0].instantiate),
-				\offset, this.mono(args[2].instantiate),
-			]);
+			Post << "Making\n";
+			resources[2] = NodeProxy.new;
+			resources[2].source = {
+				var fill = this.mono(args[0].instantiate);
+				var offset = this.mono(args[2].instantiate);
+				Out.kr(p, [fill, offset]);
+			};
 			resources[3] = freer;
 			p.get(getter);
 		}, {
@@ -1977,33 +1998,51 @@ PTScriptOp : PTOp {
 }
 
 PTScript {
-	var <size, <lines, <fadeTimes, <refs, <context, <linesDraft;
+	var <size, <lines, <fadeTimes, <quants, <refs, <context, <linesDraft;
 
 	*new { |size, context|
-		^super.newCopyArgs(size, List.new, List.new, Dictionary.new, context, nil);
+		^super.newCopyArgs(size, List.new, List.new, List.new, Dictionary.new, context, nil);
 	}
 
 	linesOrDraft {
 		^(linesDraft ? lines)
 	}
 
+	defaultFadeTime {
+		^if (context.includesKey('defaultFadeTime'), {context['defaultFadeTime']}, {0.01});
+	}
+
+	defaultQuant {
+		^if (context.includesKey('defaultQuant'), {context['defaultQuant']}, {1});
+	}
+
 	load { |newLines, topLevel=false, callback|
+		var newFadeTimes = List.new;
+		var newQuants = List.new;
+		var newLinesActual = List.new;
 		Post << "load new lines " << newLines << "\n";
 		linesDraft = List.newFrom(lines);
 		newLines.do { |line|
-			linesDraft.add(line);
+			var commaSep = line.split($,);
+			linesDraft.add(commaSep[0]);
+			newLinesActual.add(commaSep[0]);
+			newFadeTimes.add((commaSep[1] ? this.defaultFadeTime).asFloat);
+			newQuants.add((commaSep[2] ? this.defaultQuant).asFloat);
 		};
 		this.makeHappen({ |net|
 			net.startEdit;
-			newLines.do {|line|
+			newLinesActual.do {|line, i|
 				Post << "loading line " << line << "\n";
-				net.stageAdd(line);
+				net.stageAdd(line, newFadeTimes[i], newQuants[i]);
 			};
 			// Return the net we staged
 			net
 		}, topLevel, callback);
-		newLines.do {
-			fadeTimes.add(0.01);
+		newFadeTimes.do { |x|
+			fadeTimes.add(x);
+		};
+		newQuants.do { |x|
+			quants.add(x);
 		};
 	}
 
@@ -2012,9 +2051,10 @@ PTScript {
 		linesDraft.add(line);
 		this.makeHappen({ |net|
 			net.startEdit;
-			net.stageAdd(line);
+			net.stageAdd(line, this.defaultFadeTime, this.defaultQuant);
 		}, topLevel, callback);
-		fadeTimes.add(0.01);
+		fadeTimes.add(this.defaultFadeTime);
+		quants.add(this.defaultQuant);
 	}
 
 	validateIndex { |index, allowSize=true|
@@ -2032,10 +2072,11 @@ PTScript {
 		linesDraft.insert(index, "IT");
 		this.makeHappen({ |net|
 			net.startEdit;
-			net.stageInsertPassthrough(index+1);
+			net.stageInsertPassthrough(index+1, this.defaultFadeTime, this.defaultQuant);
 		}, topLevel, callback);
 		// Inserting a passthrough should never fail.
-		fadeTimes.insert(index, 0.01);
+		fadeTimes.insert(index, this.defaultFadeTime);
+		quants.insert(index, this.defaultQuant);
 	}
 
 	makeHappen { |f, topLevel, callback|
@@ -2075,6 +2116,7 @@ PTScript {
 			r.stageRemoveAt(index+1);
 		}, topLevel, callback);
 		fadeTimes.removeAt(index);
+		quants.removeAt(index);
 	}
 
 	replace { |index, line, topLevel=false, callback=nil|
@@ -2099,6 +2141,16 @@ PTScript {
 		^fadeTimes[index];
 	}
 
+	setQuant { |index, q|
+		this.validateIndex(index);
+		refs.do { |r| r.setQuant(index+1, q) };
+		quants[index] = q;
+	}
+
+	getQuant { |index|
+		^quants[index];
+	}
+
 	clear { |topLevel=false, callback|
 		linesDraft = List.new;
 		this.makeHappen( {|r|
@@ -2109,6 +2161,7 @@ PTScript {
 			r;
 		}, topLevel, callback);
 		fadeTimes.clear;
+		quants.clear;
 	}
 }
 
@@ -2124,10 +2177,6 @@ PT {
 		SynthDef(\tick, { |bus|
 			var env = Env(levels: [0, 1, 0], times: [0, 0.01], curve: 'hold');
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
-		}).add;
-
-		SynthDef(\euclideanSetter, { |bus, fill, offset|
-			Out.kr(bus, [fill, offset]);
 		}).add;
 
 		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil, nil).init;
@@ -2288,8 +2337,8 @@ PT {
 	printOn { | stream |
 		scripts.do { |script, i|
 			stream << "#" << (i + 1) << "\n";
-			script.lines.do { |l|
-				stream << l << "\n";
+			script.lines.do { |l, i|
+				stream << l << "," << script.fadeTimes[i] << "," << script.quants[i] <<"\n";
 			};
 			stream << "\n";
 		}
@@ -2301,6 +2350,14 @@ PT {
 
 	getFadeTime { |script, index|
 		^scripts[script].getFadeTime(index);
+	}
+
+	setQuant { |script, index, q|
+		scripts[script].setQuant(index, q);
+	}
+
+	getQuant { |script, index|
+		^scripts[script].getQuant(index);
 	}
 
 	clear { |callback|
