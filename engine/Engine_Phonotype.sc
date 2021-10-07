@@ -2521,7 +2521,7 @@ Engine_Phonotype : CroneEngine {
 
 		this.addCommand("fade_time", "iiif", { arg msg;
 			var prevFadeTime = pt.getFadeTime(msg[2].asInt, msg[3].asInt);
-			var newFadeTime = msg[4].asFloat * prevFadeTime;
+			var newFadeTime = (msg[4].asFloat * prevFadeTime).clip(0.005, 60);
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
 				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime);
 				cb.value;
@@ -2531,7 +2531,7 @@ Engine_Phonotype : CroneEngine {
 		this.addCommand("quant", "iiii", { arg msg;
 			var prevQuant = pt.getQuant(msg[2].asInt, msg[3].asInt);
 			var prevQuantIndex = if(prevQuant < 1, {((-1 / prevQuant) + 2).round}, {prevQuant.round});
-			var newQuantIndex = msg[4].asInt + prevQuantIndex;
+			var newQuantIndex = (msg[4].asInt + prevQuantIndex).clip(-126, 128);
 			var newQuant = if (newQuantIndex <= 0, {-1 / (newQuantIndex - 2)}, {newQuantIndex});
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
 				pt.setQuant(msg[2].asInt, msg[3].asInt, newQuant);
