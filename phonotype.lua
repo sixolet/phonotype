@@ -13,8 +13,9 @@ edit_col = 1
 edit_row = 1
 editing = ""
 clipboard = ""
+moved_line = false --moved scope so it's accessible by model:to_line()
 
--- This one is just a text editor
+--[[ This one is just a text editor
 
 BasicModel = {scripts = {}}
 
@@ -68,6 +69,8 @@ function BasicModel:as_string(script)
   
   return table.concat(self.scripts[script], "\n")
 end
+
+]]--
 
 -- This one is Phonotype
 
@@ -131,6 +134,34 @@ function PTModel:as_string(script)
   
   return table.concat(self.scripts[script], "\n")
 end
+
+function PTModel:super() --simplifies super layer
+  return keyboard.alt() or keyboard.ctrl()
+end
+
+function PTModel:to_line(line) --moved repeated code here
+  edit_row = line
+  if not moved_line then
+    editing = model:get(editing_script, edit_row)
+  end
+  edit_col = string.len(editing) + 1
+end
+
+function PTModel:enter() -- moved here so we can use it when pasting, cutting, etc.
+  if keyboard.shift() then
+    model:insert_blank(editing_script, edit_row)
+    editing = model:get(editing_script, edit_row)
+  elseif edit_row > model:script_size(editing_script) then
+    model:add(editing_script, editing)
+  elseif editing == "" then
+    model:remove(editing_script, edit_row)
+  else
+    model:replace(editing_script, edit_row, editing)
+  end
+  model:to_line(edit_row + 1)
+end
+  
+
 
 model = PTModel
 
@@ -222,7 +253,7 @@ function redraw()
 end
 
 function keyboard.char(character)
-  if keyboard.alt() or keyboard.alt() then
+  if model:super() then
     return
   end
   -- print("ADDING .", character, ".")
@@ -234,6 +265,7 @@ end
 function keyboard.code(key, value)
   -- print("KEY", key)
   -- print("POS", edit_col)
+  moved_line = false
   if value == 1 or value == 2 then -- 1 is down, 2 is held, 0 is release
     if key == "BACKSPACE" then
       if editing:len() == 0 or edit_col == 1 then
@@ -255,60 +287,48 @@ function keyboard.code(key, value)
         edit_col = edit_col + 1
       end
     elseif key == "ENTER" then
-      if keyboard.shift() then
-        model:insert_blank(editing_script, edit_row)
-        editing = model:get(editing_script, edit_row)
-      elseif edit_row > model:script_size(editing_script) then
-        model:add(editing_script, editing)
-      elseif editing == "" then
-        model:remove(editing_script, edit_row)
-      else
-        model:replace(editing_script, edit_row, editing)
-      end
+      model:enter()
     elseif key == "UP" then
       if edit_row == 1 then
         -- pass
       else
-        if keyboard.alt() then
+        if model:super() and model:get(editing_script, edit_row) ~= "" then -- Added second condition to prevent weirdness when trying to shift empty lines
             local storedLine = model:get(editing_script, edit_row - 1)
             model:replace(editing_script, edit_row - 1, editing)
             model:replace(editing_script, edit_row, storedLine)
+            moved_line = true
         end
-        edit_row = edit_row - 1
-        editing = model:get(editing_script, edit_row)
-        edit_col = string.len(editing) + 1
+        model:to_line(edit_row - 1)
       end
     elseif key == "DOWN" then
       if edit_row > model:script_size(editing_script) then
         edit_row = model:script_size(editing_script) + 1
       else
-        if keyboard.alt() and model:get(editing_script, edit_row + 1) ~= "" then
+        if model:super() and model:get(editing_script, edit_row + 1) ~= "" then
           local storedLine = model:get(editing_script, edit_row + 1)
           model:replace(editing_script, edit_row + 1, editing)
           model:replace(editing_script, edit_row, storedLine)
+          moved_line = true
         end
-
-        edit_row = edit_row + 1
-        editing = model:get(editing_script, edit_row)
-        edit_col = string.len(editing) + 1
+        model:to_line(edit_row + 1)
       end
     elseif string.len(key) == 2 and string.sub(key, 1, 1) == "F" then
       local s = tonumber(string.sub(key, 2, 2))
       if s ~= nil then
+        local current_script = editing_script
         editing_script = s
-        edit_row = 1
-        editing = model:get(editing_script, edit_row)
-        edit_col = string.len(editing) + 1
+        if current_script ~= s then model:to_line(1) end --if we don't change scripts, don't change lines
       end
-    elseif key == "C" and keyboard.alt() then
+    elseif key == "C" and model:super() then
       clipboard = editing
-    elseif key == "X" and keyboard.alt() then
+    elseif key == "X" and model:super() then
       clipboard = editing
       editing = ""
-      edit_col = 1
-    elseif key == "V" and keyboard.alt() then
+      model:enter()
+      model:to_line(edit_row - 1)
+    elseif key == "V" and model:super() then
       editing = clipboard
-      edit_col = string.len(editing) + 1
+      model:enter()
     end
   end
   print("Now editing row:", edit_row, "col:", edit_col)
@@ -323,14 +343,14 @@ function osc_in(path, args, from)
     err_line = args[3]
     local script_contents = args[4]
 
-    if PTModel.nonce == nonce then
+    if model.nonce == outstanding then
       PTModel.outstanding = 0
     end
     if script_contents == "" then
-      PTModel:insert_blank(args[2], 1)
+      model:insert_blank(args[2], 1)
     end
     
-    PTModel.scripts[script_num] = split_lines(script_contents)
+    model.scripts[script_num] = split_lines(script_contents)
     redraw()
   end
 end
