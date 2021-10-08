@@ -1,5 +1,6 @@
 -- PHONOTYPE
--- phonotype exists between keyboard and speaker
+-- phonotype exists between 
+-- keyboard and speaker
 
 engine.name = "Phonotype"
 
@@ -14,6 +15,7 @@ edit_row = 1
 editing = ""
 clipboard = ""
 moved_line = false --moved scope so it's accessible by model:to_line()
+loaded_scene = ""
 
 --[[ This one is just a text editor
 
@@ -41,7 +43,7 @@ function BasicModel:script_size(script)
   if self.scripts[script] == nil then
     return 0
   end
-  
+
   return #(self.scripts[script])
 end
 
@@ -75,6 +77,11 @@ end
 -- This one is Phonotype
 
 PTModel = {scripts = {}, nonce = 1, outstanding = 0}
+
+
+function PTModel:trigger_save()
+  engine.dump()
+end
 
 function PTModel:get_if_nil(script)
   if self.scripts[script] == nil then
@@ -120,6 +127,15 @@ function PTModel:remove(script, idx)
   self.nonce = self.nonce + 1
 end
 
+function PTModel:load(script, contents)
+  print("load_scene", self.nonce, script-1, contents, type(contents))
+  engine.load_scene(self.nonce, script-1, contents)
+  -- On loading forget we ever knew scripts contents.
+  self.scripts={}
+  self.outstanding = self.nonce
+  self.nonce = self.nonce + 1
+end
+
 function PTModel:get(script, idx)
   if self.scripts[script] == nil or self.scripts[script][idx] == nil then
     return ""
@@ -131,7 +147,7 @@ function PTModel:as_string(script)
   if self.scripts[script] == nil then
     return ""
   end
-  
+
   return table.concat(self.scripts[script], "\n")
 end
 
@@ -160,7 +176,7 @@ function PTModel:enter() -- moved here so we can use it when pasting, cutting, e
   end
   model:to_line(edit_row + 1)
 end
-  
+
 
 
 model = PTModel
@@ -169,7 +185,7 @@ function string.insert(str1, str2, pos)
   if pos == string.len(str1) + 1 then
     return str1..str2
   end
-  
+
   return str1:sub(1,pos-1)..str2..str1:sub(pos)
 end
 
@@ -181,17 +197,29 @@ end
 function script_num_rep(n)
   if n <= 8 then
     return n
-  else
+  elseif n == 9 then
     return "M"
+  elseif n == 10 then
+    return "D"
   end
 end
 
 function init()
-  params:add_control("gain","gain",controlspec.new(0.1,10,'exp',0,0.5,'')) 
-  params:set_action("gain", function(x) engine.set_param(18, x) end)  
-  params:add_number("root","root",20,880,440) 
+  params:add_file("scene", "scene")
+  params:set_action("scene", maybe_load_scene)
+  params:add_control("gain","gain",controlspec.new(0.1,10,'exp',0,0.5,''))
+  params:set_action("gain", function(x) engine.set_param(18, x) end)
+  params:add_number("root","root",20,880,440)
   params:set_action("root", function(x) engine.set_param(17, x) end)
+
+  params:add_taper("defaultfade", "default fade time", 0.01, 30, 1, math.sqrt(math.sqrt(2)), "s")
+  params:set_action("defaultfade", function(x) engine.default_fade_time(x) end)
+  params:add_taper("defaultquant", "default quant", 1/16, 16, 1/16, 2, "beats")
+  params:set_action("defaultquant", function(x) engine.default_quant(x) end)
+
+
   local param_spec = controlspec.new(0,1,'lin',1/127.0,0.5,'')
+  params:add_group("flexible controls", 16)
   for i=0,15,1 do
     local param_id = string.format("param%i", i)
     params:add_control(
@@ -202,6 +230,19 @@ function init()
   end
   params:bang()
   sync_routine = clock.run(sync_every_beat)
+end
+
+function maybe_load_scene(full_filename)
+  if loaded_scene == full_filename then
+    return
+  end
+  f = io.open(full_filename, "r")
+  if f == nil then
+    err_line = "file not found"
+    return
+  end
+  contents = f:read("*all")
+  PTModel:load(editing_script, contents)
 end
 
 function sync_every_beat()
@@ -286,6 +327,8 @@ function keyboard.code(key, value)
       else
         edit_col = edit_col + 1
       end
+    elseif key == "ENTER" and model:super() and editing_script == 10 then
+      model:trigger_save()
     elseif key == "ENTER" then
       model:enter()
     elseif key == "UP" then
@@ -319,6 +362,11 @@ function keyboard.code(key, value)
         editing_script = s
         if current_script ~= s then model:to_line(1) end --if we don't change scripts, don't change lines
       end
+    elseif key == "ESC" then
+      editing_script = 10 -- this is the description
+      edit_row = 1
+      editing = model:get(editing_script, edit_row)
+      edit_col = string.len(editing) + 1
     elseif key == "C" and model:super() then
       clipboard = editing
     elseif key == "X" and model:super() then
@@ -336,7 +384,7 @@ function keyboard.code(key, value)
 end
 
 function osc_in(path, args, from)
-  print("osc", path, args[1], args[2], args[3], args[4], from)  
+  print("osc", path, args[1], args[2], args[3], args[4], from)
   if path == "/report" then
     local nonce = args[1]
     local script_num = args[2] + 1
@@ -346,12 +394,25 @@ function osc_in(path, args, from)
     if model.nonce == outstanding then
       PTModel.outstanding = 0
     end
-    if script_contents == "" then
-      model:insert_blank(args[2], 1)
-    end
-    
+
     model.scripts[script_num] = split_lines(script_contents)
     redraw()
+  elseif path == "/save" then
+    local text = args[1]
+    local split_text = split_lines(text)
+    local filename = (split_text[1] or "default") .. ".txt"
+    local full_filename = _path.data .. "phonotype/" .. filename
+    local f = io.open(full_filename,"w")
+    if f == nil then
+      err_line = "error writing file"
+      return
+    end
+    f:write(text)
+    f:close()
+    loaded_scene = full_filename
+    params:set("scene", full_filename)
+    print("Wrote", full_filename)
+    err_line = filename
   end
 end
 

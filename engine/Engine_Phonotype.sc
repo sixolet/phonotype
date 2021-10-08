@@ -1681,7 +1681,9 @@ PTScriptNet {
 			};
 			// If we needed to fade a proxy, schedule the free for after the fade.
 			if (lastProxy != nil, {
-				lastProxy.schedAfterFade(freeFn);
+				TempoClock.schedAbs(
+					TempoClock.nextTimeOnGrid(quant: lastProxy.quant ? 0, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
+					freeFn);
 			}, freeFn);
 		});
 	}
@@ -2003,6 +2005,68 @@ PTScriptOp : PTOp {
 	}
 }
 
+PTDescription {
+	var <size, <lines;
+
+	*new { |size|
+		^super.newCopyArgs(size, List.new);
+	}
+
+	linesOrDraft {
+		^lines
+	}
+
+	load { |newLines, topLevel=false, callback|
+		lines.clear.addAll(newLines);
+		callback.value;
+	}
+
+	add { |line, topLevel=false, callback|
+		lines.add(line);
+		callback.value;
+	}
+
+	validateIndex { |index, allowSize=true|
+		if (index < 0, { PTEditError.new("Index must be > 0").throw });
+		if (index > lines.size, { PTEditError.new("Index must be < number of lines").throw });
+		if ((index == lines.size) && (allowSize.not), { PTEditError.new("Cant operate on index " ++ index).throw });
+	}
+
+	insertPassthrough { |index, topLevel=false, callback|
+		lines.insert(index, "");
+		callback.value;
+	}
+
+	removeAt { |index, topLevel=false, callback=nil|
+		this.validateIndex(index);
+		lines.removeAt(index);
+		callback.value;
+	}
+
+	replace { |index, line, topLevel=false, callback=nil|
+		this.validateIndex(index);
+		lines[index] = line;
+		callback.value;
+	}
+
+	setFadeTime { |index, time|}
+
+	getFadeTime { |index|
+		^0;
+	}
+
+	setQuant { |index, q|}
+
+	getQuant { |index|
+		^1;
+	}
+
+	clear { |topLevel=false, callback|
+		lines.clear;
+		callback.value;
+	}
+}
+
 PTScript {
 	var <size, <lines, <fadeTimes, <quants, <refs, <context, <linesDraft;
 
@@ -2019,7 +2083,7 @@ PTScript {
 	}
 
 	defaultQuant {
-		^if (context.includesKey('defaultQuant'), {context['defaultQuant']}, {1});
+		^if (context.includesKey('defaultQuant'), {context['defaultQuant']}, {1/16});
 	}
 
 	load { |newLines, topLevel=false, callback|
@@ -2177,7 +2241,7 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, parser, <main, audio_busses, control_busses, param_busses, out_proxy;
+	var server, <scripts, <description, parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
 
 	*new { |server|
 		SynthDef(\tick, { |bus|
@@ -2185,7 +2249,7 @@ PT {
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
 		}).add;
 
-		^super.newCopyArgs(server, nil, PTParser.default, nil, nil, nil, nil).init;
+		^super.newCopyArgs(server, nil, nil, PTParser.default, nil, nil, nil, nil, nil).init;
 	}
 
 	*wrapWithCallbacks { |r, successCallback, errorCallback|
@@ -2209,11 +2273,13 @@ PT {
 	}
 
 	initBusses { |ctx|
-		audio_busses = List.new;
-		20.do { |i|
-			var bus = Bus.audio(server, numChannels: 2);
-			audio_busses.add(bus);
-		};
+		if (audio_busses == nil, {
+			audio_busses = List.new;
+			20.do { |i|
+				var bus = Bus.audio(server, numChannels: 2);
+				audio_busses.add(bus);
+			};
+		});
 		ctx['AB'] = PTBusOp.new("AB", \audio, audio_busses);
 		ctx['AB='] = PTBusSendOp.new("AB=", \audio, audio_busses);
 		this.putBusOps(ctx, "A", audio_busses[16], \audio);
@@ -2221,11 +2287,13 @@ PT {
 		this.putBusOps(ctx, "C", audio_busses[18], \audio);
 		this.putBusOps(ctx, "D", audio_busses[19], \audio);
 
-		control_busses = List.new;
-		20.do { |i|
-			var bus = Bus.control(server, numChannels: 2);
-			control_busses.add(bus);
-		};
+		if (control_busses == nil, {
+			control_busses = List.new;
+			20.do { |i|
+				var bus = Bus.control(server, numChannels: 2);
+				control_busses.add(bus);
+			};
+		});
 		ctx['CB'] = PTBusOp.new("CB", \control, control_busses);
 		ctx['CB='] = PTBusSendOp.new("CB=", \control, control_busses);
 		this.putBusOps(ctx, "W", control_busses[16], \control);
@@ -2233,15 +2301,19 @@ PT {
 		this.putBusOps(ctx, "Y", control_busses[18], \control);
 		this.putBusOps(ctx, "Z", control_busses[19], \control);
 
-		param_busses = List.new;
-		// Special parameter busses:
-		// 16 is the duration of a beat (exposed as M)
-		// 17 is the root note (exposed as ROOT)
-		// 18 is the output gain (not exposed internally)
-		19.do { |i|
-			var bus = Bus.control(server, numChannels: 2);
-			param_busses.add(bus);
-		};
+		if (param_busses == nil, {
+			param_busses = List.new;
+			// Special parameter busses:
+			// 16 is the duration of a beat (exposed as M)
+			// 17 is the root note (exposed as ROOT)
+			// 18 is the output gain (not exposed internally)
+			19.do { |i|
+				var bus = Bus.control(server, numChannels: 2);
+				param_busses.add(bus);
+			};
+			// Default output gain.
+			param_busses[18].value = 0.4;
+		});
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
 		ctx['PRM'] = ctx['PARAM'];
 		ctx['P'] = ctx['PARAM'];
@@ -2258,9 +2330,6 @@ PT {
 		ctx['N.MAJP'] = PTToCPSScaleOp.new("N.MAJP", param_busses[17], Scale.majorPentatonic);
 		ctx['N.MINP'] = PTToCPSScaleOp.new("N.MINP", param_busses[17], Scale.minorPentatonic);
 		ctx['N.DOR'] = PTToCPSScaleOp.new("N.DOR", param_busses[17], Scale.dorian);
-
-		// Default output gain.
-		param_busses[18].value = 0.4;
 	}
 
 	initBeats { |ctx|
@@ -2298,12 +2367,15 @@ PT {
 	}
 
 	init {
-		var ctx = ();
+		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
-		out_proxy = NodeProxy.new(server, \audio, 2);
-		out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh };
-		scripts = Array.new(numScripts);
+		if (out_proxy == nil, {
+			out_proxy = NodeProxy.new(server, \audio, 2);
+			out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh };
+		});
+		description = PTDescription.new(6);
+		scripts = Array.new(numScripts+1);
 		numScripts.do { |i|
 			var script = PTScript.new(scriptSize, ctx);
 			var oldCtx = ctx;
@@ -2316,8 +2388,25 @@ PT {
 				ctx[name.asSymbol] = PTScriptOp.new(server, name, nargs, parser, script);
 			}
 		};
+		scripts.add(description);
 		main = PTScriptNet.new(server: server, parser: parser, lines: [],
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
+	}
+
+	defaultQuant_ { |q|
+		ctx['defaultQuant'] = q;
+	}
+
+	defaultQuant{
+		^if (ctx.includesKey('defaultQuant'), {ctx['defaultQuant'];}, {1/16});
+	}
+
+	defaultFadeTime_ { |t|
+		ctx['defaultFadeTime'] = t;
+	}
+
+	defaultFadeTime{
+		^if (ctx.includesKey('defaultFadeTime'), {ctx['defaultFadeTime'];}, {0.01});
 	}
 
 	replace { |script, index, line, topLevel=true, callback|
@@ -2341,7 +2430,12 @@ PT {
 	}
 
 	printOn { | stream |
-		scripts.do { |script, i|
+		description.lines.do { |l|
+			stream << l << "\n";
+		};
+		stream << "\n";
+		numScripts.do { |i|
+			var script = scripts[i];
 			stream << "#" << (i + 1) << "\n";
 			script.lines.do { |l, i|
 				stream << l << "," << script.fadeTimes[i] << "," << script.quants[i] <<"\n";
@@ -2367,34 +2461,49 @@ PT {
 	}
 
 	clear { |callback|
-		var latch = PTCountdownLatch(scripts.size, {
+		Routine({
+			var latch;
+			out_proxy.set(\in, [0,0]);
+			server.sync;
+			latch = PTCountdownLatch(numScripts, {
+				callback.value;
+			});
+			Post << "CLEARING old script data\n";
+			Post << "Free main\n";
+			main.free;
+			Post << "Clear scripts\n";
+			description.clear;
+			scripts.do { |s|
+				s.clear(topLevel: false, callback: latch);
+			};
+		}).play;
+	}
+
+	clearFully { |callback|
+		this.clear({
 			Post << "Free busses\n";
 			audio_busses.do { |b| b.free };
 			control_busses.do { |b| b.free };
+			out_proxy.clear;
 			callback.value;
 		});
-		Post << "CLEARING old script data\n";
-		Post << "Free main\n";
-		main.free;
-		Post << "Clear scripts\n";
-		scripts.do { |s|
-			s.clear(topLevel: false, callback: latch);
-		};
-
 	}
 
 	load { |str, callback, errCallback|
 		this.clear({
 			Post << "Done with clear\n";
 			this.loadOnly(str, {
-				out_proxy <<> main.out;
-				callback.value;
+				Routine({
+					server.sync;
+					out_proxy.set(\in, main.out);
+					callback.value;
+				}).play;
 			}, errCallback);
 		});
 	}
 
 	loadHelper{ |scriptChunks, scriptIndex, topCallback|
-		var callback = if (scriptIndex == (scripts.size - 1), {
+		var callback = if (scriptIndex == (numScripts - 1), {
 			topCallback
 		}, {
 			{this.loadHelper(scriptChunks, scriptIndex+1, topCallback)}
@@ -2405,17 +2514,20 @@ PT {
 
 	loadOnly { |str, callback, errCallback|
 		var lines = str.split($\n);
-		var curScript = 0;
+		var curScript = nil;
 		var scriptChunks;
 		Post << "INITIALIZING new script data\n";
 		this.init;
-		scriptChunks = Array.fill(scripts.size, {List.new});
+		scriptChunks = Array.fill(numScripts, {List.new});
 		lines.do { |l|
 			case {l[0] == $#} {
 				curScript = (l[1..].asInteger - 1);
 			}
 			{l == ""} {
 				// pass
+			}
+			{curScript == nil} {
+				description.add(l);
 			}
 			{true} {
 				scriptChunks[curScript].add(l);
@@ -2492,6 +2604,16 @@ Engine_Phonotype : CroneEngine {
 			Post << "Boo\n";
 		});
 
+		this.addCommand("load_scene", "iis", { arg msg;
+			Post << "Engine load\n";
+			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
+				pt.load(msg[3].asString, true, cb);
+			});
+		});
+
+		this.addCommand("dump", "", {
+			luaOscAddr.sendMsg("/save", pt.asString);
+		});
 
 		this.addCommand("insert_passthrough", "iii", { arg msg;
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb| pt.insertPassthrough(msg[2].asInt, msg[3].asInt, true, cb)});
@@ -2539,6 +2661,14 @@ Engine_Phonotype : CroneEngine {
 			}, "schedule on: " ++ newQuant.asStringPrec(3));
 		});
 
+		this.addCommand("default_quant", "f", { |msg|
+			pt.defaultQuant = msg[1].asFloat;
+		});
+
+		this.addCommand("default_fade_time", "f", { |msg|
+			pt.defaultFadeTime = msg[1].asFloat;
+		});
+
 		this.addCommand("just_report", "ii", { arg msg;
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, {|cb| cb.value});
 		});
@@ -2561,7 +2691,7 @@ Engine_Phonotype : CroneEngine {
 	}
 
 	free {
-		pt.clear;
+		pt.clearFully;
 	}
 }
 
