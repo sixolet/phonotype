@@ -157,9 +157,6 @@ end
 
 function PTModel:to_line(line) --moved repeated code here
   edit_row = line
-  if edit_row > model:script_size(editing_script) + 1 then
-    edit_row = model:script_size(editing_script) + 1
-  end
   if not moved_line then
     editing = model:get(editing_script, edit_row)
   end
@@ -177,6 +174,10 @@ function PTModel:enter() -- moved here so we can use it when pasting, cutting, e
     model:to_line(edit_row + 1)
   elseif editing == "" then
     model:remove(editing_script, edit_row)
+    moved_line = true
+    -- Anticipates that the "next" row will become this one, but 
+    -- we should stay highlighting this
+    editing = model:get(editing_script, edit_row+1)
     model:to_line(edit_row)
   else
     model:replace(editing_script, edit_row, editing)
@@ -406,8 +407,10 @@ function osc_in(path, args, from)
 
     model.scripts[script_num] = split_lines(script_contents)
     
+    -- If we just loaded a shorter script...
     if edit_row > model:script_size(editing_script) + 1 then
-      model:to_line(edit_row)
+      edit_row = model:script_size(editing_script) + 1
+      edit_col = 1
     end
     
     redraw()
