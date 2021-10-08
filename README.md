@@ -42,11 +42,21 @@ F1..F8 on the keyboard navigates to script 1 through 8.
 F9 on the keyboard navigates to the `M` (main) script. This is the script that
 outputs sound.
 
+ESC nagivates to the scene description.
+
 Arrow keys choose a line to edit; enter key actually changes the line.
 
 Shift-enter inserts a new "passthrough" line above the current one.
 
 K2 adjusts the fade time of the current line.
+
+## Saving and Loading
+
+While in the scene description, Ctrl-Enter or Alt-Enter saves your scene, with
+the filename based on the first line of your scene description.
+
+To load a scene, change the `scene` parameter (on the params page) to a file of
+your choice.
 
 ## Operators
 
