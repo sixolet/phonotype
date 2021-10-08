@@ -157,6 +157,9 @@ end
 
 function PTModel:to_line(line) --moved repeated code here
   edit_row = line
+  if edit_row > model:script_size(editing_script) + 1 then
+    edit_row = model:script_size(editing_script) + 1
+  end
   if not moved_line then
     editing = model:get(editing_script, edit_row)
   end
@@ -166,15 +169,19 @@ end
 function PTModel:enter() -- moved here so we can use it when pasting, cutting, etc.
   if keyboard.shift() then
     model:insert_blank(editing_script, edit_row)
-    editing = model:get(editing_script, edit_row)
+    editing = "IT"
+    moved_line = true
+    model:to_line(edit_row)
   elseif edit_row > model:script_size(editing_script) then
     model:add(editing_script, editing)
+    model:to_line(edit_row + 1)
   elseif editing == "" then
     model:remove(editing_script, edit_row)
+    model:to_line(edit_row)
   else
     model:replace(editing_script, edit_row, editing)
+    model:to_line(edit_row + 1)
   end
-  model:to_line(edit_row + 1)
 end
 
 
@@ -212,10 +219,12 @@ function init()
   params:add_number("root","root",20,880,440)
   params:set_action("root", function(x) engine.set_param(17, x) end)
 
+  --[[ Doesn't quite work yet
   params:add_taper("defaultfade", "default fade time", 0.01, 30, 1, math.sqrt(math.sqrt(2)), "s")
   params:set_action("defaultfade", function(x) engine.default_fade_time(x) end)
   params:add_taper("defaultquant", "default quant", 1/16, 16, 1/16, 2, "beats")
   params:set_action("defaultquant", function(x) engine.default_quant(x) end)
+  ]]--
 
 
   local param_spec = controlspec.new(0,1,'lin',1/127.0,0.5,'')
@@ -396,6 +405,11 @@ function osc_in(path, args, from)
     end
 
     model.scripts[script_num] = split_lines(script_contents)
+    
+    if edit_row > model:script_size(editing_script) + 1 then
+      model:to_line(edit_row)
+    end
+    
     redraw()
   elseif path == "/save" then
     local text = args[1]
