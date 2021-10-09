@@ -402,6 +402,86 @@ PTPlusOp : PTOp {
 
 }
 
+PTMinOp : PTOp {
+	*new {
+		^super.newCopyArgs("MIN", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] min: iargs[1];
+	}
+
+	min { |args, resources|
+		^args[0].min min: args[1].min;
+	}
+
+	max { |args, resources|
+		^args[0].max min: args[1].max;
+	}
+
+}
+
+PTMaxOp : PTOp {
+	*new { |name, nargs|
+		^super.newCopyArgs("MAX", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] max: iargs[1];
+	}
+
+	min { |args, resources|
+		^args[0].min max: args[1].min;
+	}
+
+	max { |args, resources|
+		^args[0].max max: args[1].max;
+	}
+
+}
+
+PTGTOp : PTOp {
+	*new {
+		^super.newCopyArgs(">", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] > iargs[1];
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+}
+
+PTLTOp : PTOp {
+	*new {
+		^super.newCopyArgs("<", 2);
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args);
+		^iargs[0] < iargs[1];
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+}
+
 PTMixOp : PTOp {
 
 	instantiate { |args, resources|
@@ -835,6 +915,42 @@ PTTanhOp : PTOp {
 	}
 }
 
+PTAbsOp : PTOp {
+	*new {
+		^super.newCopyArgs("ABS", 1);
+	}
+
+	max { |args|
+		^max(args[0].max, -1 * args[0].min);
+	}
+
+	min {
+		^0;
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.abs;
+	}
+}
+
+PTInvOp : PTOp {
+	*new {
+		^super.newCopyArgs("INV", 1);
+	}
+
+	max { |args|
+		^(-1 * args[0].min);
+	}
+
+	min { |args|
+		^(-1 * args[0].max);
+	}
+
+	instantiate { |args, resources|
+		^(-1 * args[0]);
+	}
+}
+
 PTFoldOp : PTOp {
 
 	*new {
@@ -1152,6 +1268,10 @@ PTParser {
 			"DEL.F" -> PTAllPassOp.new("DEL.F", CombN, CombL),
 			"DEL.A" -> PTAllPassOp.new("DEL.A", AllpassN, AllpassL),
 
+			"ABS" -> PTAbsOp.new,
+			"INV" -> PTInvOp.new,
+			"MIN" -> PTMinOp.new,
+			"MAX" -> PTMaxOp.new,
 			"SCL" -> PTScaleOp.new,
 			"UNI" -> PTUniOp.new,
 			"FLOOR" -> PTFloorOp.new,
@@ -1166,6 +1286,8 @@ PTParser {
 			"-" -> PTMinusOp.new("-", 2),
 			"/" -> PTDivOp.new(),
 			"%" -> PTModOp.new(),
+			">" -> PTGTOp.new,
+			"<" -> PTLTOp.new,
 		]));
 	}
 
