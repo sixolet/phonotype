@@ -1070,11 +1070,20 @@ PTBusSendOp : PTOp {
 		^args[1].max;
 	}
 
+	*prepareAudio { |a|
+		^if(a.rate == \control,
+				{ K2A.ar(a) },
+				{a});
+	}
+
 	instantiate { |args, resources|
 		var n = args[0].min;
 		var a = PTScriptNet.maybeMakeStereo(args[1].instantiate);
-		^if (rate == \audio,
-			{ Out.ar(busses[n], a); a},
+		^if (rate == \audio, {
+				var aa = PTBusSendOp.prepareAudio(a);
+				Out.ar(busses[n], aa);
+				aa;
+			},
 			{ Out.kr(busses[n], a); a});
 	}
 }
@@ -1183,8 +1192,11 @@ PTNamedBusSendOp : PTOp {
 
 	instantiate { |args, resources|
 		var a = PTScriptNet.maybeMakeStereo(args[0].instantiate);
-		^if (rate == \audio,
-			{ Out.ar(bus, a); a},
+		^if (rate == \audio, {
+				var aa = PTBusSendOp.prepareAudio(a);
+				Out.ar(bus, aa);
+				aa;
+			},
 			{ Out.kr(bus, a); a});
 	}
 }
@@ -1197,8 +1209,11 @@ PTNamedLazyBusSendOp : PTNamedBusSendOp {
 		if (b == nil, {
 			Error.new("Oh no bus nil " ++ bus ++ " and its get "  ++ b).throw;
 		});
-		^if (rate == \audio,
-			{ Out.ar(b, a); a},
+		^if (rate == \audio,{
+				var aa = PTBusSendOp.prepareAudio(a);
+				Out.ar(b, aa);
+				aa;
+			},
 			{ Out.kr(b, a); a});
 	}
 }
@@ -2734,7 +2749,9 @@ Engine_Phonotype : CroneEngine {
 		});
 
 		this.addCommand("dump", "", {
-			luaOscAddr.sendMsg("/save", pt.asString);
+			var c = CollStream.new;
+			c << pt;
+			luaOscAddr.sendMsg("/save", c.collection);
 		});
 
 		this.addCommand("insert_passthrough", "iii", { arg msg;
