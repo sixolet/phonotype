@@ -1664,14 +1664,16 @@ PTScriptNet {
 			{entry.node == nil}, { propagate = true;},
 			{entry.node.rate != entry.newNode.rate}, {propagate = true;},
 		);
-		if (propagate && (next != nil), {
+		^if (propagate && (next != nil), {
+			Post << "reevaluating next line" << (idx+1) << "\n";
 			this.stageReplace(idx+1, next.newLine ? next.line);
-		});
-		^if (this.outputChanged && (callSite != nil), {
-			// Post << "reevaluating call site\n";
-			callSite.net.reevaluate(callSite.id);
 		}, {
-			this
+			if (this.outputChanged && (callSite != nil), {
+				Post << "reevaluating call site\n";
+				callSite.net.reevaluate(callSite.id);
+			}, {
+				this
+			});
 		});
 	}
 
@@ -2290,8 +2292,9 @@ PTScript {
 		var toCommit = List.new;
 		var latch;
 		try {
-			// Post << "Doing to all refs " << refs << "\n";
+			Post << "staging change to " << refs.size << "\n";
 			refs.do { |r| toCommit.add(f.value(r)) };
+			Post << "staged\n";
 			// Post << "Check top level\n";
 			if (topLevel && (toCommit.select({|p| p.outputChanged}).size > 0), {
 				PTCheckError.new("Output must be audio").throw;
@@ -2308,7 +2311,7 @@ PTScript {
 		linesDraft = nil;
 		// Post << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
 		latch = PTCountdownLatch.new(toCommit.size, callback);
-		Post << "About to commit " << toCommit << "\n";
+		Post << "About to commit asynchronously " << toCommit.size << "\n";
 		toCommit.do { |p|
 			p.commit(latch).play;
 		};
