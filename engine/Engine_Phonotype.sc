@@ -38,6 +38,10 @@ PTOp {
 		^super.newCopyArgs(name, nargs);
 	}
 
+	stringWithArgsResources { |args, resources|
+		^this.asString;
+	}
+
 	check { |args| }
 
 	min { |args, resources|
@@ -135,7 +139,7 @@ PTNode {
 	}
 
 	printOn { | stream |
-        stream << "PTNode( " << this.op << ", " << this.args << " )";
+		stream << "PTNode( " << op.stringWithArgsResources(args, resources) << ", " << this.args << " )";
     }
 }
 
@@ -1484,7 +1488,7 @@ PTScriptNet {
 			var a = args[i];
 			var n = if (callSite != nil, {
 				var p;
-				PTDbg << "New proxy on init for " << this << "\n";
+				// PTDbg << "New proxy on init for " << this << "\n";
 				p = callSite.net.newProxy(rate: nil, fadeTime: 0, quant: 0);
 				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
 				p;
@@ -1551,9 +1555,9 @@ PTScriptNet {
 		jBus = PTLazyBus.new(server, \audio);
 		kBus = PTLazyBus(server, \control);
 		if (script != nil, {
-			PTDbg << "Initializing network from script " << script << script.linesOrDraft << "\n";
+			PTDbg << "Initializing net " << id << " from script " << script << script.linesOrDraft << "\n";
 			script.linesOrDraft.do { |x|
-				PTDbg << "Adding on init " << x << "\n";
+				PTDbg << "Adding on init " << x << " to " << id << "\n";
 				this.stageAdd(x);
 			};
 		}, {
@@ -1571,12 +1575,11 @@ PTScriptNet {
 
 	printOn { | stream |
         stream << "PTScriptNet(\n";
-		stream << "order\n";
-		this.order.do { |l| stream << l << "\n" };
-		stream << "newOrder\n";
-		this.newOrder.do { |l| stream << l << "\n" };
+		stream << id << "\n";
+		stream << "order " << order << "\n";
+		stream << "newOrder " << newOrder << "\n";
 		stream << this.dict;
-		stream << ")";
+		stream << ")\n";
     }
 
 	*makeOut { |out, rate|
@@ -1659,10 +1662,16 @@ PTScriptNet {
 		^(this.outputRate != nil) && (this.newOutputRate != nil) && (this.newOutputRate != this.outputRate);
 	}
 
+	// Reevaluate the entry at id. If it's already being reevaluated (because, say, the user changed it), return nil.
 	reevaluate { |id|
 		var entry = this[id];
 		var idx = newOrder.indexOf(id);
-		^this.stageReplace(idx, entry.newLine ? entry.line);
+		^if (entry.newLine == nil, {
+			this.stageReplace(idx, entry.newLine ? entry.line);
+		}, {
+			PTDbg << "We are already being reevaluated\n";
+			nil
+		});
 	}
 
 	stageReplace { |idx, line|
@@ -1679,6 +1688,10 @@ PTScriptNet {
 		prev = this[idx-1];
 		next = this[idx+1];
 		entry['newLine'] = line;
+		if (entry.newNode != nil, {
+			PTDbg << "Found it -- replaceing a new node with another" << entry.newNode <<"\n";
+			entry.newNode.free;
+		});
 		entry['newNode'] = parser.parse(line, context: this.contextWithItRate(PTScriptNet.nodeOf(prev).rate, id: id));
 		propagate = false;
 		case (
@@ -1686,11 +1699,14 @@ PTScriptNet {
 			{entry.node.rate != entry.newNode.rate}, {propagate = true;},
 		);
 		^if (propagate && (next != nil), {
-			PTDbg << "reevaluating next line" << (idx+1) << "\n";
+			PTDbg << "reevaluating next line " << (idx+1) << "\n";
 			this.stageReplace(idx+1, next.newLine ? next.line);
 		}, {
 			if (this.outputChanged && (callSite != nil), {
-				PTDbg << "reevaluating call site\n";
+				PTDbg << "reevaluating call site of " << this.id << "\n";
+				// When we reevaluate the call site, it could *already* be
+				// part of this mess of things we're attempting to do and commit.
+				// In that case, reevaluate is designed to return nil.
 				callSite.net.reevaluate(callSite.id);
 			}, {
 				this
@@ -1763,7 +1779,7 @@ PTScriptNet {
 				case (
 					{entry.proxy == nil}, {
 						// New entry
-						PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
+						// PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
 						if (node.rate == nil, {
@@ -1775,7 +1791,7 @@ PTScriptNet {
 						// Schedule the old proxy for freeing
 						freeProxies.add(entry.proxy);
 						// Make the new one.
-						PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
+						// PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
 					},
@@ -1809,7 +1825,10 @@ PTScriptNet {
 					entry.newNode.commit;
 					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					// PTDbg << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
+					if (entry.newNode == nil, {
+						PTDbg << "WTF " << entry << "\n" << this << "\n";
+					});
+					PTDbg << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
 					lastProxy = entry.proxy;
@@ -1821,7 +1840,7 @@ PTScriptNet {
 			server.sync;
 			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
-			PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
+			// PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
 			deferredConnections.do { |x| x.to.proxy.xset(\in, x.from.proxy) };
 			// Stage 4: Collect anything no longer needed. Exit the transaction.
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
@@ -1857,6 +1876,8 @@ PTScriptNet {
 		dict.do { |entry|
 			entry.proxy.clear;
 			entry.node.free;
+			entry.newNode.free;
+
 		};
 
 		argProxies.do { |p| p.clear };
@@ -2127,6 +2148,15 @@ PTScriptOp : PTOp {
 		^super.newCopyArgs(name, nargs, server, parser, script);
 	}
 
+	stringWithArgsResources { |args, resources|
+		^if (resources == nil, {
+			"Empty PTScriptOp";
+		}, {
+			var net = resources[0];
+			"Script: " ++ net.id;
+		});
+	}
+
 	min { |args, resources|
 		^-10;
 	}
@@ -2154,7 +2184,7 @@ PTScriptOp : PTOp {
 		args.do { |a|
 			a.commit;
 		};
-		PTDbg << "Committing net " << net << "\n";
+		PTDbg << "Committing net from op " << net.id << "\n";
 		net.commit.do { |w| w.yield };
 	}
 
@@ -2231,10 +2261,10 @@ PTDescription {
 }
 
 PTScript {
-	var <size, <lines, <fadeTimes, <quants, <refs, <context, <linesDraft;
+	var <size, <lines, <fadeTimes, <quants, <refs, <context, <linesDraft, working;
 
 	*new { |size, context|
-		^super.newCopyArgs(size, List.new, List.new, List.new, Dictionary.new, context, nil);
+		^super.newCopyArgs(size, List.new, List.new, List.new, Dictionary.new, context, nil, false);
 	}
 
 	linesOrDraft {
@@ -2315,18 +2345,24 @@ PTScript {
 	makeHappen { |f, topLevel, callback, from|
 		var toCommit = List.new;
 		var latch;
+		// if (working, {
+		//	Error.new("OMG IM WORKING").throw;
+		// });
+		working = true;
 		try {
-			PTDbg << "staging change to " << refs.size << "\n";
-			refs.do { |r|
+			var todo = List.newFrom(refs);
+			PTDbg << "staging change to " << todo.size << "\n";
+			todo.do { |r|
 				try {
-					toCommit.add(f.value(r))
+					var candidate = f.value(r);
+					toCommit.add(candidate);
 				} { |err|
 					// If we error in the middle of adjusting a net, we need to abort that net too, along with any others.
 					r.abort;
 					err.throw;
 				};
 			};
-			PTDbg << "staged\n";
+			PTDbg << "staged " << todo.size << "\n";
 			// PTDbg << "Check top level\n";
 			if (topLevel && (toCommit.select({|p| p.outputChanged}).size > 0), {
 				PTCheckError.new("Output must be audio").throw;
@@ -2337,15 +2373,20 @@ PTScript {
 				p.abort;
 			};
 			linesDraft = nil;
+			working = false;
 			err.throw;
 		};
 		//PTDbg << "committing to lines " << linesDraft << "\n";
 		lines = linesDraft;
 		linesDraft = nil;
 		// PTDbg << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
-		latch = PTCountdownLatch.new(toCommit.size, callback);
+		latch = PTCountdownLatch.new(toCommit.size, {
+			working = false;
+			callback.value;
+		});
 		PTDbg << "About to commit asynchronously " << from << " " << toCommit << "\n";
 		toCommit.do { |p|
+			PTDbg << "Committing " << p.id << " from makeHappen\n";
 			p.commit(latch).play;
 		};
 	}

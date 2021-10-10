@@ -263,7 +263,88 @@ SIN 440
 	 	this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.5"]));
 	}
 
-	 test_replaceDoesntLeakRefs {
+	 test_replaceFailsThenSucceeds1 {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.assertException({
+			p.replace(8, 1, "SIN 0.5");
+		}, PTCheckError);
+		this.waitCb("replace", 2, { |cb| p.replace(8, 1, "* IT 0.4", true, cb)});
+	 	this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.4"]));
+	}
+
+	test_replaceFailsThenSucceeds2 {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.assertException({
+			p.replace(8, 1, "SIN ASDF");
+		}, PTParseError);
+		this.waitCb("replace", 2, { |cb| p.replace(8, 1, "* IT 0.4", true, cb)});
+	 	this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.4"]));
+	}
+
+	test_replaceFailsThenSucceedsInScriptCall {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#1
+TRI I1
+#9
+SIN 440
+* IT $1.1 0.5
+", cb, {|e| e.reportError;})});
+		this.assertException({
+			p.replace(0, 0, "ASDF");
+		}, PTParseError);
+	 	this.assertEquals(p.scripts[0].lines, List.newUsing(["TRI I1"]));
+	 	this.assertEquals(p.scripts[0].refs.size, 1);
+		this.waitCb("replace", 2, { |cb| p.replace(0, 0, "TRI * 2 I1", true, cb)});
+		this.assertEquals(p.scripts[0].lines, List.newUsing(["TRI * 2 I1"]));
+		this.assertEquals(p.scripts[0].refs.size, 1);
+	}
+
+	test_replaceWithWrongScriptCall {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N I1
+#8
+SIN 220
+#9
+A= $8
+SILENCE
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		this.waitCb("replace", 2, { |cb| p.replace(7, 0, "$1.1 0", true, cb)});
+		Post << "REFS ARE " << p.scripts[0].refs << "\n";
+		this.assertEquals(p.scripts[0].refs.size, 1, "Number of script refs");
+	}
+
+	test_replaceWithRightScriptCall {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N I1
+#8
+SIN 220
+#9
+A= $8
+SILENCE
+", cb)});
+		Post << "LOADED\n";
+		this.waitCb("replace", 2, { |cb| p.replace(7, 0, "$7.1 0", true, cb)});
+	}
+
+	test_replaceDoesntLeakRefs {
 		this.waitCb("load", 2, { |cb|
 			p.load("
 #1
