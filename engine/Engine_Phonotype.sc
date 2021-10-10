@@ -1,3 +1,18 @@
+PTDbg : Post {
+	classvar <>debug = false;
+
+	* put { arg item;
+		if (PTDbg.debug, {
+			item.post;
+		});
+	}
+	* putAll { arg aCollection;
+		if (PTDbg.debug, {
+			aCollection.post;
+		});
+	}
+}
+
 PTCheckError : Error {
 	errorString {
 		^what
@@ -109,10 +124,10 @@ PTNode {
 	}
 
 	free {
-		// Post << "Freeing " << this.op << "\n";
+		PTDbg << "Freeing " << this.op << "\n";
 		if (resources != nil, {
 			resources.do { |x|
-				// Post << "Freeing resources " << x << "\n";
+				PTDbg << "Freeing resources " << x << "\n";
 				x.free();
 			};
 		});
@@ -211,7 +226,7 @@ PTNoiseOp : PTOp {
 	}
 
 	instantiate {
-		Post << "Instantiating the " << delegate << "\n";
+		PTDbg << "Instantiating the " << delegate << "\n";
 		^delegate.ar;
 	}
 }
@@ -1323,7 +1338,7 @@ PTParser {
 				var low = this.parseHelper(preTokens, 1, ctx);
 				var high = this.parseHelper(preTokens, low.key, ctx);
 				var results = List.new;
-				Post << "low " << low << " high " << high << "\n";
+				PTDbg << "low " << low << " high " << high << "\n";
 				if (low.value.isConstant.not || high.value.isConstant.not || (high.value.min <= low.value.min), {
 					PTParseError.new("L.MIX takes two constants").throw;
 				});
@@ -1356,7 +1371,7 @@ PTParser {
 	debug { |context, str|
 		context.includesKey[\debug].if({
 			context[\debug].if({
-				Post << "DEBUG: " << str << "\n"
+				PTDbg << "DEBUG: " << str << "\n"
 			})
 		});
 	}
@@ -1468,7 +1483,9 @@ PTScriptNet {
 		4.do { |i|
 			var a = args[i];
 			var n = if (callSite != nil, {
-				var p = callSite.net.newProxy(rate: nil, fadeTime: 0, quant: 0);
+				var p;
+				PTDbg << "New proxy on init for " << this << "\n";
+				p = callSite.net.newProxy(rate: nil, fadeTime: 0, quant: 0);
 				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
 				p;
 			}, {
@@ -1480,7 +1497,7 @@ PTScriptNet {
 			if (
 				a != nil,
 				{
-					// Post << "Setting arg source to " << a << "\n";
+					// PTDbg << "Setting arg source to " << a << "\n";
 					n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) };
 				},
 				{ n.source = {0.0} }
@@ -1534,9 +1551,9 @@ PTScriptNet {
 		jBus = PTLazyBus.new(server, \audio);
 		kBus = PTLazyBus(server, \control);
 		if (script != nil, {
-			Post << "Initializing network from script " << script << script.linesOrDraft << "\n";
+			PTDbg << "Initializing network from script " << script << script.linesOrDraft << "\n";
 			script.linesOrDraft.do { |x|
-				Post << "Adding on init " << x << "\n";
+				PTDbg << "Adding on init " << x << "\n";
 				this.stageAdd(x);
 			};
 		}, {
@@ -1554,7 +1571,11 @@ PTScriptNet {
 
 	printOn { | stream |
         stream << "PTScriptNet(\n";
-		this.lines.do { |l| stream << l << "\n" };
+		stream << "order\n";
+		this.order.do { |l| stream << l << "\n" };
+		stream << "newOrder\n";
+		this.newOrder.do { |l| stream << l << "\n" };
+		stream << this.dict;
 		stream << ")";
     }
 
@@ -1627,14 +1648,14 @@ PTScriptNet {
 		this.assertEditing;
 		newOrder.removeAt(index);
 		^if (propagate, {
-			stageReplace(index, next.newLine ? next.line);
+			this.stageReplace(index, next.newLine ? next.line);
 		}, {
 			this;
 		});
 	}
 
 	outputChanged {
-		// Post << "output rate is " << this.outputRate << " new output rate is " << this.newOutputRate << "\n";
+		// PTDbg << "output rate is " << this.outputRate << " new output rate is " << this.newOutputRate << "\n";
 		^(this.outputRate != nil) && (this.newOutputRate != nil) && (this.newOutputRate != this.outputRate);
 	}
 
@@ -1665,11 +1686,11 @@ PTScriptNet {
 			{entry.node.rate != entry.newNode.rate}, {propagate = true;},
 		);
 		^if (propagate && (next != nil), {
-			Post << "reevaluating next line" << (idx+1) << "\n";
+			PTDbg << "reevaluating next line" << (idx+1) << "\n";
 			this.stageReplace(idx+1, next.newLine ? next.line);
 		}, {
 			if (this.outputChanged && (callSite != nil), {
-				Post << "reevaluating call site\n";
+				PTDbg << "reevaluating call site\n";
 				callSite.net.reevaluate(callSite.id);
 			}, {
 				this
@@ -1696,6 +1717,9 @@ PTScriptNet {
 	abort {
 		order.do { |id|
 			var entry = dict[id];
+			if( entry['newNode'] != nil, {
+				entry.newNode.free;
+			});
 			entry['newLine'] = nil;
 			entry['newNode'] = nil;
 		};
@@ -1713,7 +1737,7 @@ PTScriptNet {
 	commit { |cb|
 		var outEntry = dict[newOrder.last];
 		if (argProxies == nil, {
-			// Post << "INITIALIZING ARG PROXIES\n";
+			// PTDbg << "INITIALIZING ARG PROXIES\n";
 			this.initArgProxies;
 		});
 		^Routine.new({
@@ -1728,7 +1752,7 @@ PTScriptNet {
 			var deferredConnections = List.new;
 			var freeFn;
 			// Stage 1: allocate all the new node proxies, and connect them together.
-			Post << "Beginning commit routine for scriptNet " << id << "\n";
+			PTDbg << "Beginning commit routine for scriptNet " << id << "\n";
 			newOrder.do { |id, idx|
 				var entry = dict[id];
 				var node = PTScriptNet.nodeOf(entry);
@@ -1739,21 +1763,21 @@ PTScriptNet {
 				case (
 					{entry.proxy == nil}, {
 						// New entry
+						PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
 						if (node.rate == nil, {
-							Post << "Nil rate node!! " << node << "\n";
+							PTDbg << "Nil rate node!! " << node << "\n";
 						});
-						// Post << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 					},
 					{entry.proxy.rate != node.rate}, {
 						// Rate change entry
 						// Schedule the old proxy for freeing
 						freeProxies.add(entry.proxy);
 						// Make the new one.
+						PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						proxyIsNew = true;
-						// Post << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 					},
 					{ oldIdx == nil }, {},
 					{ (oldIdx != nil) && (oldIdx > 0) && (order[oldIdx-1] != prevId) }, {
@@ -1764,7 +1788,7 @@ PTScriptNet {
 				case(
 					{prevEntry == nil}, {/*pass*/},
 					{proxyIsNew }, {
-						// Post << "connecting proxies for " << idx << "\n";
+						// PTDbg << "connecting proxies for " << idx << "\n";
 						prevEntry.proxy <>> entry.proxy;
 					},
 					{oldPreviousWasDifferent || prevProxyIsNew}, {
@@ -1777,15 +1801,15 @@ PTScriptNet {
 			};
 			server.sync;
 			// Stage 2: Set the source of all the node proxies.
-			Post << "Instantiating nodes for " << newOrder << "\n";
+			PTDbg << "Instantiating nodes for " << newOrder << "\n";
 			newOrder.do { |id|
 				var entry = dict[id];
 				if (entry.newNode != nil, {
-					// Post << "Committing new node " << entry.newNode << "\n";
+					PTDbg << "Committing new node " << entry.newNode << "\n";
 					entry.newNode.commit;
-					// Post << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
+					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					// Post << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
+					// PTDbg << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
 					lastProxy = entry.proxy;
@@ -1797,7 +1821,7 @@ PTScriptNet {
 			server.sync;
 			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
-			Post << "Deferred connecting proxies " << deferredConnections << "\n";
+			PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
 			deferredConnections.do { |x| x.to.proxy.xset(\in, x.from.proxy) };
 			// Stage 4: Collect anything no longer needed. Exit the transaction.
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
@@ -1814,7 +1838,7 @@ PTScriptNet {
 				// Stage 5, later: free some stuff
 				freeNodes.do({|x| x.free});
 				freeProxies.do({|x|
-					Post << "Freeing proxy\n";
+					PTDbg << "Freeing proxy\n";
 					x.clear;
 				});
 			};
@@ -1863,10 +1887,10 @@ PTCountdownLatch {
 	}
 
 	init {
-		// Post << "Initialize latch " << id << " with " << n << "\n";
+		// PTDbg << "Initialize latch " << id << " with " << n << "\n";
 		if (n == 0, {
 			SystemClock.sched(0, {
-				// Post << "Boom " << id << "\n";
+				// PTDbg << "Boom " << id << "\n";
 				cb.value;
 			});
 		});
@@ -1875,10 +1899,10 @@ PTCountdownLatch {
 	value {
 		n = n - 1;
 		if (n == 0, {
-			// Post << "Bang " << id << "\n";
+			// PTDbg << "Bang " << id << "\n";
 			cb.value;
 		}, {
-			// Post << "Tick " << n << id << "\n";
+			// PTDbg << "Tick " << n << id << "\n";
 		});
 	}
 }
@@ -1906,13 +1930,13 @@ PTRhythmOp : PTOp {
 		if (resources[0] == nil, {
 			b = Bus.control(server, numChannels: 1);
 			pattern = Pbind(\instrument, \tick, \dur, quant, \bus, b.index);
-			Post << "Bus " << b << " server " << server << "\n";
+			PTDbg << "Bus " << b << " server " << server << "\n";
 			idx = b.index;
 			if (quant == 0, { Error.new("OOPOS quant zero").throw; });
 			esp = pattern.play(TempoClock.default, quant: q);
-			Post << "Starting beat" << idx << "\n";
+			PTDbg << "Starting beat" << idx << "\n";
 			freer = PTFreer({
-				Post << "Stopping beat" << idx << "\n";
+				PTDbg << "Stopping beat" << idx << "\n";
 				esp.stop;
 			});
 			resources[0] = b;
@@ -2004,14 +2028,14 @@ PTEuclideanOp : PTOp {
 			);
 			idx = b.index;
 			esp = pattern.play(TempoClock.default, quant: q);
-			Post << "Starting euclidean" << idx << "\n";
+			PTDbg << "Starting euclidean" << idx << "\n";
 			freer = PTFreer({
-				Post << "Stopping euclidean" << idx << "\n";
+				PTDbg << "Stopping euclidean" << idx << "\n";
 				esp.stop;
 			});
 			resources[0] = b;
 			resources[1] = p;
-			Post << "Making\n";
+			PTDbg << "Making\n";
 			resources[2] = NodeProxy.new;
 			resources[2].source = {
 				var fill = this.mono(args[0].instantiate);
@@ -2078,13 +2102,13 @@ PTEveryOp : PTOp {
 		if (resources[0] == nil, {
 			b = Bus.control(server, numChannels: 1);
 			pattern = Pbind(\instrument, \tick, \dur, quant, \bus, b.index);
-			Post << "Bus " << b << " server " << server << "\n";
+			PTDbg << "Bus " << b << " server " << server << "\n";
 			idx = b.index;
 			if (quant == 0, { Error.new("OOPOS quant zero").throw; });
 			esp = pattern.play(TempoClock.default, quant: q);
-			Post << "Starting beat" << idx << "\n";
+			PTDbg << "Starting beat" << idx << "\n";
 			freer = PTFreer({
-				Post << "Stopping beat" << idx << "\n";
+				PTDbg << "Stopping beat" << idx << "\n";
 				esp.stop;
 			});
 			resources[0] = b;
@@ -2126,11 +2150,11 @@ PTScriptOp : PTOp {
 
 	commit { |args, resources|
 		var net = resources[0];
-		Post << "Committing args " << args << "\n";
+		PTDbg << "Committing args " << args << "\n";
 		args.do { |a|
 			a.commit;
 		};
-		Post << "Committing net " << net << "\n";
+		PTDbg << "Committing net " << net << "\n";
 		net.commit.do { |w| w.yield };
 	}
 
@@ -2229,7 +2253,7 @@ PTScript {
 		var newFadeTimes = List.new;
 		var newQuants = List.new;
 		var newLinesActual = List.new;
-		Post << "load new lines " << newLines << "\n";
+		PTDbg << "load new lines " << newLines << "\n";
 		linesDraft = List.newFrom(lines);
 		newLines.do { |line|
 			var commaSep = line.split($,);
@@ -2241,12 +2265,12 @@ PTScript {
 		this.makeHappen({ |net|
 			net.startEdit;
 			newLinesActual.do {|line, i|
-				Post << "loading line " << line << "\n";
+				PTDbg << "loading line " << line << "\n";
 				net.stageAdd(line, newFadeTimes[i], newQuants[i]);
 			};
 			// Return the net we staged
 			net
-		}, topLevel, callback);
+		}, topLevel, callback, "load");
 		newFadeTimes.do { |x|
 			fadeTimes.add(x);
 		};
@@ -2261,13 +2285,13 @@ PTScript {
 		this.makeHappen({ |net|
 			net.startEdit;
 			net.stageAdd(line, this.defaultFadeTime, this.defaultQuant);
-		}, topLevel, callback);
+		}, topLevel, callback, "add");
 		fadeTimes.add(this.defaultFadeTime);
 		quants.add(this.defaultQuant);
 	}
 
 	validateIndex { |index, allowSize=true|
-		if (index < 0, { PTEditError.new("Index must be > 0").throw });
+		if (index < 0, { PTEditError.new("Index must be >= 0").throw });
 		if (index > lines.size, { PTEditError.new("Index must be < number of lines").throw });
 		if ((index == lines.size) && (allowSize.not), { PTEditError.new("Cant operate on index " ++ index).throw });
 	}
@@ -2282,62 +2306,71 @@ PTScript {
 		this.makeHappen({ |net|
 			net.startEdit;
 			net.stageInsertPassthrough(index+1, this.defaultFadeTime, this.defaultQuant);
-		}, topLevel, callback);
+		}, topLevel, callback, "insertPassthrough");
 		// Inserting a passthrough should never fail.
 		fadeTimes.insert(index, this.defaultFadeTime);
 		quants.insert(index, this.defaultQuant);
 	}
 
-	makeHappen { |f, topLevel, callback|
+	makeHappen { |f, topLevel, callback, from|
 		var toCommit = List.new;
 		var latch;
 		try {
-			Post << "staging change to " << refs.size << "\n";
-			refs.do { |r| toCommit.add(f.value(r)) };
-			Post << "staged\n";
-			// Post << "Check top level\n";
+			PTDbg << "staging change to " << refs.size << "\n";
+			refs.do { |r|
+				try {
+					toCommit.add(f.value(r))
+				} { |err|
+					// If we error in the middle of adjusting a net, we need to abort that net too, along with any others.
+					r.abort;
+					err.throw;
+				};
+			};
+			PTDbg << "staged\n";
+			// PTDbg << "Check top level\n";
 			if (topLevel && (toCommit.select({|p| p.outputChanged}).size > 0), {
 				PTCheckError.new("Output must be audio").throw;
 			});
 		} { |err|
 			toCommit.do { |p|
+				PTDbg << "aborting\n";
 				p.abort;
 			};
 			linesDraft = nil;
 			err.throw;
 		};
-		//Post << "committing to lines " << linesDraft << "\n";
+		//PTDbg << "committing to lines " << linesDraft << "\n";
 		lines = linesDraft;
 		linesDraft = nil;
-		// Post << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
+		// PTDbg << "new latch of size " << toCommit.size << " and callback " << callback << "\n";
 		latch = PTCountdownLatch.new(toCommit.size, callback);
-		Post << "About to commit asynchronously " << toCommit.size << "\n";
+		PTDbg << "About to commit asynchronously " << from << " " << toCommit << "\n";
 		toCommit.do { |p|
 			p.commit(latch).play;
 		};
 	}
 
 	removeAt { |index, topLevel=false, callback=nil|
-		this.validateIndex(index);
+		this.validateIndex(index, allowSize: false);
 		linesDraft = List.newFrom(lines);
 		linesDraft.removeAt(index);
 		this.makeHappen({ |r|
 			r.startEdit;
 			r.stageRemoveAt(index+1);
-		}, topLevel, callback);
+		}, topLevel, callback, "removeAt");
 		fadeTimes.removeAt(index);
 		quants.removeAt(index);
 	}
 
 	replace { |index, line, topLevel=false, callback=nil|
 		"REPLACING % %\n".postf(index, line);
-		this.validateIndex(index);
+		this.validateIndex(index, allowSize: false);
 		linesDraft = List.newFrom(lines);
 		linesDraft[index] = line;
 		this.makeHappen({ |r|
 			r.startEdit;
 			r.stageReplace(index+1, line)
-		}, topLevel, callback);
+		}, topLevel, callback, "replace");
 		lines[index] = line;
 	}
 
@@ -2369,7 +2402,7 @@ PTScript {
 				r.stageRemoveAt(i+1);
 			};
 			r;
-		}, topLevel, callback);
+		}, topLevel, callback, "clear");
 		fadeTimes.clear;
 		quants.clear;
 	}
@@ -2561,7 +2594,7 @@ PT {
 		param_busses[param].value = v;
 	}
 
-	removeAt { |script, index, topLevel, callback|
+	removeAt { |script, index, topLevel=true, callback=nil|
 		scripts[script].removeAt(index, topLevel: topLevel, callback:callback);
 	}
 
@@ -2606,12 +2639,13 @@ PT {
 			out_proxy.set(\in, [0,0]);
 			server.sync;
 			latch = PTCountdownLatch(numScripts, {
+				PTDbg << "Clear done\n";
 				callback.value;
 			});
-			Post << "CLEARING old script data\n";
-			Post << "Free main\n";
+			PTDbg << "CLEARING old script data\n";
+			PTDbg << "Free main\n";
 			main.free;
-			Post << "Clear scripts\n";
+			PTDbg << "Clear scripts\n";
 			description.clear;
 			scripts.do { |s|
 				s.clear(topLevel: false, callback: latch);
@@ -2621,7 +2655,7 @@ PT {
 
 	clearFully { |callback|
 		this.clear({
-			Post << "Free busses\n";
+			PTDbg << "Free busses\n";
 			audio_busses.do { |b| b.free };
 			control_busses.do { |b| b.free };
 			out_proxy.clear;
@@ -2631,32 +2665,47 @@ PT {
 
 	load { |str, callback, errCallback|
 		this.clear({
-			Post << "Done with clear\n";
+			PTDbg << "Done with clear\n";
 			this.loadOnly(str, {
 				Routine({
-					server.sync;
-					out_proxy.set(\in, main.out);
-					callback.value;
+					try {
+						server.sync;
+						out_proxy.set(\in, main.out);
+						callback.value;
+					} { |e|
+						errCallback.value(e);
+					};
 				}).play;
 			}, errCallback);
 		});
 	}
 
-	loadHelper{ |scriptChunks, scriptIndex, topCallback|
+	loadHelper{ |scriptChunks, scriptIndex, topCallback, errCallback|
 		var callback = if (scriptIndex == (numScripts - 1), {
 			topCallback
 		}, {
-			{this.loadHelper(scriptChunks, scriptIndex+1, topCallback)}
+			{
+				PTDbg << "Done with script " << scriptIndex << " loading next\n";
+				this.loadHelper(scriptChunks, scriptIndex+1, topCallback, errCallback);
+			}
 		});
-		Post << "loading script " << scriptIndex << " with " << scriptChunks[scriptIndex] << "\n";
-		scripts[scriptIndex].load(scriptChunks[scriptIndex], topLevel: false, callback: callback);
+		PTDbg << "loading script " << scriptIndex << " with " << scriptChunks[scriptIndex] << "\n";
+		try {
+			scripts[scriptIndex].load(scriptChunks[scriptIndex], topLevel: false, callback: callback);
+		} { |e|
+			PTDbg << "Error on load; calling error callback\n";
+			errCallback.value(e);
+		};
 	}
 
 	loadOnly { |str, callback, errCallback|
 		var lines = str.split($\n);
 		var curScript = nil;
 		var scriptChunks;
-		Post << "INITIALIZING new script data\n";
+		var myErrCallback = { |err|
+			this.clear({errCallback.value(err);});
+		};
+		PTDbg << "INITIALIZING new script data\n";
 		this.init;
 		scriptChunks = Array.fill(numScripts, {List.new});
 		lines.do { |l|
@@ -2673,16 +2722,15 @@ PT {
 				scriptChunks[curScript].add(l);
 			};
 		};
-		Post << "SCRIPT CHUNKS " << scriptChunks << "\n";
+		PTDbg << "SCRIPT CHUNKS " << scriptChunks << "\n";
 		this.loadHelper(scriptChunks, 0, {
 			if (this.out.rate != \audio, {
-				//this.clear;
 				//this.init;
-				errCallback.value(PTCheckError.new("Output of loaded script was not audio"));
+				myErrCallback.value(PTCheckError.new("Output of loaded script was not audio"));
 			}, {
 				callback.value;
 			});
-		});
+		}, myErrCallback);
 	}
 
 	out {
@@ -2730,7 +2778,7 @@ Engine_Phonotype : CroneEngine {
 			} { |err|
 				err.reportError;
 				e = err.errorString;
-				Post << "Reporting error to user " << e << "\n";
+				PTDbg << "Reporting error to user " << e << "\n";
 				cb.value
 			};
 
@@ -2738,14 +2786,14 @@ Engine_Phonotype : CroneEngine {
 		//  :/
 		pt = PT.new(context.server);
 		pt.load("", {
-			Post << "Initialized\n";
+			PTDbg << "Initialized\n";
 			pt.out.play;
 		}, {
-			Post << "Boo\n";
+			PTDbg << "Boo\n";
 		});
 
 		this.addCommand("load_scene", "iis", { arg msg;
-			Post << "Engine load\n";
+			PTDbg << "Engine load\n";
 			executeAndReport.value(msg[1].asInt, msg[2].asInt, { |cb|
 				pt.load(msg[3].asString, true, cb);
 			});
