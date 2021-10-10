@@ -329,6 +329,33 @@ SILENCE
 		this.assertEquals(p.scripts[0].refs.size, 1, "Number of script refs");
 	}
 
+	test_replaceMistakeTwoLayersDeep {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N.MIN I1,0.01,0.0625
+* IT UNI RSM 0.1,0.01,0.0625
+#8
+L.M 0 4: $7.1 * 2 I,5.1199943532759,0.0625
+LPF IT N SCL RSM 0.1 12 36,0.01,0.0625
+#9
+AB= 0 $8,0.01,0.0625
+IT,0.01,0.0625
+L.M 0 3: * P I AB I,0.01,0.0625
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		this.assertException({
+			p.replace(6, 0, "SIN + N.MIN I1 LR INV I I")
+		}, PTParseError);
+		Post << "REFS ARE " << p.scripts[6].refs << "\n";
+		this.assertEquals(p.scripts[6].refs.size, 5, "script refs after error: inner");
+		this.assertEquals(p.scripts[7].refs.size, 1, "script refs after error: middle");
+		// Now do the replace with the correct line
+		this.waitCb("replace", 2, { |cb| p.replace(6, 0, "SIN + N.MIN I1 LR INV I1 I1", true, cb)});
+		this.assertEquals(p.scripts[6].refs.size, 5, "script refs after correction: inner");
+		this.assertEquals(p.scripts[7].refs.size, 1, "script refs after correction: middle");
+	}
+
 	test_replaceWithRightScriptCall {
 		this.waitCb("load", 2, { |cb|
 			p.load("

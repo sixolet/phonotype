@@ -401,6 +401,34 @@ PTFilterOp : PTOp {
 	}
 }
 
+PTWrapOp : PTFilterOp {
+	*new {
+		^super.newCopyArgs("WRAP", 3, Wrap);
+	}
+
+	min { |args, resources|
+		^args[1].min;
+	}
+
+	max { |args, resources|
+		^args[2].max;
+	}
+}
+
+PTClipOp : PTFilterOp {
+	*new {
+		^super.newCopyArgs("CLIP", 3, Clip);
+	}
+
+	min { |args, resources|
+		^args[1].min;
+	}
+
+	max { |args, resources|
+		^args[2].max;
+	}
+}
+
 PTPlusOp : PTOp {
 	*new { |name, nargs|
 		^super.newCopyArgs(name, nargs);
@@ -711,7 +739,9 @@ PTLROp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		^[PTLROp.mono(args[0].instantiate), PTLROp.mono(args[1].instantiate)];
+		var iargs = PTOp.instantiateAll(args, resources);
+		PTDbg << "IARGS " << iargs << "\n";
+		^[PTLROp.mono(iargs[0]), PTLROp.mono(iargs[1])];
 	}
 }
 
@@ -966,7 +996,7 @@ PTInvOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		^(-1 * args[0]);
+		^(-1 * args[0].instantiate);
 	}
 }
 
@@ -1304,6 +1334,9 @@ PTParser {
 
 			"ABS" -> PTAbsOp.new,
 			"INV" -> PTInvOp.new,
+			"WRAP" -> PTWrapOp.new,
+			"WRP" -> PTWrapOp.new,
+			"CLIP" -> PTClipOp.new,
 			"MIN" -> PTMinOp.new,
 			"MAX" -> PTMaxOp.new,
 			"SCL" -> PTScaleOp.new,

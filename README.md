@@ -85,6 +85,18 @@ Multiply/VCA/Ring modulate two signals.
 
 `%` - 2 - Mod
 
+`WRAP`/`WRP` - 3 - Wrap
+
+1. Signal to wrap
+2. Lower bound
+3. Upper bound
+
+`CLIP` - 3 - Clip
+
+1. Signal to clip
+2. Lower bound
+3. Upper bound
+
 ### Oscillators
 
 `SIN` - 1 - Sine wave
