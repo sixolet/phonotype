@@ -1584,18 +1584,23 @@ PTScriptNet {
 
 	init { |l|
 		if (script != nil, {script.refs[id] = this});
-		this.startEdit;
-		jBus = PTLazyBus.new(server, \audio);
-		kBus = PTLazyBus(server, \control);
-		if (script != nil, {
-			PTDbg << "Initializing net " << id << " from script " << script << script.linesOrDraft << "\n";
-			script.linesOrDraft.do { |x|
-				PTDbg << "Adding on init " << x << " to " << id << "\n";
-				this.stageAdd(x);
-			};
-		}, {
-			l.do { |x| this.stageAdd(x) };
-		});
+		try {
+			this.startEdit;
+			jBus = PTLazyBus.new(server, \audio);
+			kBus = PTLazyBus(server, \control);
+			if (script != nil, {
+				PTDbg << "Initializing net " << id << " from script " << script << script.linesOrDraft << "\n";
+				script.linesOrDraft.do { |x|
+					PTDbg << "Adding on init " << x << " to " << id << "\n";
+					this.stageAdd(x);
+				};
+			}, {
+				l.do { |x| this.stageAdd(x) };
+			});
+		} { |e|
+			this.free;
+			e.throw;
+		};
 	}
 
 	lines {
@@ -2951,6 +2956,10 @@ Engine_Phonotype : CroneEngine {
 			});
 			// Set M to be the duration of a beat.
 			pt.setParam(16, 1/tempo);
+		});
+
+		this.addCommand("debug", "i", { |msg|
+			PTDbg.debug = (msg[1].asInt > 0);
 		});
 	}
 

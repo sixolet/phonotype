@@ -386,4 +386,27 @@ SIN 440
 	 	this.assertEquals(p.scripts[8].lines, List.newUsing(["SIN 440", "* SIN 1 IT"]));
 	 	this.assertEquals(p.scripts[0].refs.size, 0);
 	}
+
+	test_badScriptCall {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#1
+FLUB
+#9
+SIN 440
+", cb)});
+		this.assertException({
+			p.replace(8, 0, "$1", true);
+		}, PTParseError);
+	 	this.assertEquals(p.scripts[8].lines, List.newUsing(["SIN 440"]));
+		this.assertEquals(p.scripts[0].lines, List.newUsing(["FLUB"]));
+		this.assertEquals(p.scripts[0].refs.size, 0, "no reference to bad script");
+		this.waitCb("replace", 2, { |cb|
+			p.replace(0, 0, "SIN 440", true, cb);
+		});
+		this.waitCb("replace", 2, { |cb|
+			p.replace(8, 0, "$1", true, cb);
+		});
+		this.assertEquals(p.scripts[0].refs.size, 1, "one reference to fixed script");
+	}
 }
