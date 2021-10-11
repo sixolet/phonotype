@@ -1,5 +1,14 @@
 PTDbg : Post {
-	classvar <>debug = false;
+	classvar <>debug = true;
+	classvar <>slow = true;
+	classvar <>complexity = 0;
+
+	* complex {
+		complexity = complexity + 1;
+		if (slow && (complexity > 6000), {
+			Error.new("Too complex").throw;
+		});
+	}
 
 	* put { arg item;
 		if (PTDbg.debug, {
@@ -1268,10 +1277,10 @@ PTNamedLazyBusSendOp : PTNamedBusSendOp {
 }
 
 PTParser {
-	var <ops;
+	var <ops, <>counter;
 
 	*new { |ops|
-		^super.newCopyArgs(ops);
+		^super.newCopyArgs(ops, 0);
 	}
 
 	*default {
@@ -1363,6 +1372,7 @@ PTParser {
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var sides = s.split($:);
 		var preTokens, a, end, tokens;
+		counter = counter + 1;
 		if (sides.size == 1, {
 			tokens = sides[0].split($ );
 			a = this.parseHelper(tokens, 0, ctx);
@@ -1405,15 +1415,11 @@ PTParser {
 		^a.value;
 	}
 
-	debug { |context, str|
-		context.includesKey[\debug].if({
-			context[\debug].if({
-				PTDbg << "DEBUG: " << str << "\n"
-			})
-		});
-	}
-
 	parseHelper {|tokens, pos, context|
+		counter = counter + 1;
+		if (PTDbg.slow && (counter > 6000), {
+			Error.new("Something blew up in the parser").throw;
+		});
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\\.[0-9]+$".matchRegexp(tokens[pos])} {
@@ -1738,6 +1744,7 @@ PTScriptNet {
 		);
 		^if (propagate && (next != nil), {
 			PTDbg << "reevaluating next line " << (idx+1) << "\n";
+			PTDbg.complex;
 			this.stageReplace(idx+1, next.newLine ? next.line);
 		}, {
 			if (this.outputChanged && (callSite != nil), {
@@ -1745,6 +1752,7 @@ PTScriptNet {
 				// When we reevaluate the call site, it could *already* be
 				// part of this mess of things we're attempting to do and commit.
 				// In that case, reevaluate is designed to return nil.
+				PTDbg.complex;
 				callSite.net.reevaluate(callSite.id);
 			}, {
 				this
@@ -1771,6 +1779,7 @@ PTScriptNet {
 	abort {
 		order.do { |id|
 			var entry = dict[id];
+			PTDbg.complex;
 			if( entry['newNode'] != nil, {
 				entry.newNode.free;
 			});
@@ -1780,6 +1789,7 @@ PTScriptNet {
 		// At this point anything in newOrder w a newNode is *not* in order
 		newOrder.do { |id|
 			var entry = dict[id];
+			PTDbg.complex;
 			if (entry.newNode != nil, {
 				entry.newNode.free;
 				dict.removeAt(id);
@@ -1807,6 +1817,8 @@ PTScriptNet {
 			var freeFn;
 			// Stage 1: allocate all the new node proxies, and connect them together.
 			PTDbg << "Beginning commit routine for scriptNet " << id << "\n";
+			server.sync;
+
 			newOrder.do { |id, idx|
 				var entry = dict[id];
 				var node = PTScriptNet.nodeOf(entry);
@@ -1814,6 +1826,8 @@ PTScriptNet {
 				// Allocate a proxy if needed
 				var proxyIsNew = false;
 				var oldPreviousWasDifferent = false;
+				if (PTDbg.slow && (1.0.rand < 0.05), { (0.05).yield });
+				PTDbg.complex;
 				case (
 					{entry.proxy == nil}, {
 						// New entry
@@ -1858,6 +1872,8 @@ PTScriptNet {
 			PTDbg << "Instantiating nodes for " << newOrder << "\n";
 			newOrder.do { |id|
 				var entry = dict[id];
+				if (PTDbg.slow && (1.0.rand < 0.05), { (0.05).yield });
+				PTDbg.complex;
 				if (entry.newNode != nil, {
 					PTDbg << "Committing new node " << entry.newNode << "\n";
 					entry.newNode.commit;
@@ -1884,6 +1900,7 @@ PTScriptNet {
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
 			entriesToLeaveBehind.do { |id|
 				var entry = dict[id];
+				PTDbg.complex;
 				freeNodes.add(entry.node);
 				freeProxies.add(entry.proxy);
 				dict.removeAt(id);
@@ -1891,6 +1908,7 @@ PTScriptNet {
 			order = newOrder;
 			// Indicate we are done with everything but cleanup
 			cb.value;
+			server.sync;
 			freeFn = {
 				// Stage 5, later: free some stuff
 				freeNodes.do({|x| x.free});
@@ -1910,7 +1928,6 @@ PTScriptNet {
 
 	free {
 		// clear all my proxies, free all my nodes
-		this.out.source = { 0 };
 		dict.do { |entry|
 			entry.proxy.clear;
 			entry.node.free;
@@ -2391,6 +2408,7 @@ PTScript {
 			var todo = List.newFrom(refs);
 			PTDbg << "staging change to " << todo.size << "\n";
 			todo.do { |r|
+				PTDbg.complex;
 				try {
 					var candidate = f.value(r);
 					toCommit.add(candidate);
@@ -2519,6 +2537,8 @@ PT {
 		}
 	}
 
+	reset { parser.counter = 0; PTDbg.complexity = 0; }
+
 	putBusOps { |ctx, name, bus, rate|
 		ctx[name.asSymbol] = PTNamedBusOp.new(name, rate, bus);
 		ctx[(name ++ "=").asSymbol] = PTNamedBusSendOp.new(name ++ "=", rate, bus);
@@ -2619,6 +2639,7 @@ PT {
 	}
 
 	init {
+		this.reset;
 		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
@@ -2662,10 +2683,12 @@ PT {
 	}
 
 	replace { |script, index, line, topLevel=true, callback|
+		this.reset;
 		scripts[script].replace(index, line, topLevel: topLevel, callback: callback);
 	}
 
 	insertPassthrough { |script, index, topLevel=true, callback|
+		this.reset;
 		scripts[script].insertPassthrough(index, topLevel: topLevel, callback: callback);
 	}
 
@@ -2674,10 +2697,12 @@ PT {
 	}
 
 	removeAt { |script, index, topLevel=true, callback=nil|
+		this.reset;
 		scripts[script].removeAt(index, topLevel: topLevel, callback:callback);
 	}
 
 	add { |script, line, topLevel=true, callback|
+		this.reset;
 		scripts[script].add(line, topLevel: topLevel, callback: callback);
 	}
 
@@ -2713,6 +2738,7 @@ PT {
 	}
 
 	clear { |callback|
+		this.reset;
 		Routine({
 			var latch;
 			out_proxy.set(\in, [0,0]);
@@ -2739,10 +2765,12 @@ PT {
 			control_busses.do { |b| b.free };
 			out_proxy.clear;
 			callback.value;
+			SynthDef.removeAt(\tick);
 		});
 	}
 
 	load { |str, callback, errCallback|
+		this.reset;
 		this.clear({
 			PTDbg << "Done with clear\n";
 			this.loadOnly(str, {
@@ -2960,6 +2988,7 @@ Engine_Phonotype : CroneEngine {
 
 		this.addCommand("debug", "i", { |msg|
 			PTDbg.debug = (msg[1].asInt > 0);
+			PTDbg.slow = true;
 		});
 	}
 

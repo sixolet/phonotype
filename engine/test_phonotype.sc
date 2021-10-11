@@ -15,14 +15,15 @@ PTTestCallback {
 	}
 }
 
-TestPT : UnitTest {
-
-	var p, freeBusses, numSynths, numUGens;
+TestPTBase : UnitTest {
+	var p, freeBusses, numSynths, numUGens, numDefs, numGroups;
 
 	setUp {
 		freeBusses = Server.default.audioBusAllocator.countFree;
 		numUGens = Server.default.numUGens;
 		numSynths = Server.default.numSynths;
+		numDefs = Server.default.numSynthDefs;
+		numGroups = Server.default.numGroups;
 		p = PT.new(Server.default);
 	}
 
@@ -31,18 +32,29 @@ TestPT : UnitTest {
 		this.waitCb("clearFully", 2, { |cb|
 			p.clearFully(cb);
 		});
-		SystemClock.sched(1, {done = true});
+		SystemClock.sched(1.2, {done = true});
 		this.wait({done}, "waiting for some time to let cleanup happen", 3);
 		this.assertEquals(Server.default.audioBusAllocator.countFree, freeBusses, "Verify no busses leaked");
 		this.assertEquals(Server.default.numUGens, numUGens, "Verify no ugens leaked");
 		this.assertEquals(Server.default.numSynths, numSynths, "Verify no synths leaked");
+		//this.assertEquals(Server.default.numGroups, numGroups, "Verify no groups leaked");
+		//this.assertEquals(Server.default.numSynthDefs, numDefs, "Verify no synthDefs leaked");
 	}
 
 	waitCb { |msg, time, f|
 		var cb = PTTestCallback.new;
+		var extraWait = false;
 		f.value(cb);
 		this.wait(cb.done, msg, time);
+		SystemClock.sched(0.1, {extraWait=true});
+		this.wait({extraWait}, "wait for things to settle", 1);
 	}
+
+}
+
+TestPT : TestPTBase {
+
+
 
 	test_loadFresh {
 		this.waitCb("load", 2, { |cb|
@@ -232,7 +244,8 @@ SIN 440
 	 	};
 	}
 
-	 test_replaceGoesAudioInScriptCall {
+	// This one flakes and I know why: we free stuff after we callback.
+	test_replaceGoesAudioInScriptCall {
 		this.waitCb("load", 2, { |cb|
 			p.load("
 #1
@@ -408,5 +421,37 @@ SIN 440
 			p.replace(8, 0, "$1", true, cb);
 		});
 		this.assertEquals(p.scripts[0].refs.size, 1, "one reference to fixed script");
+	}
+}
+
+TestPTStress : TestPTBase {
+		test_replaceMistakeTwoLayersDeepRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N.MIN I1,0.01,0.0625
+* IT UNI RSM 0.1,0.01,0.0625
+#8
+L.M 0 4: $7.1 * 2 I,5.1199943532759,0.0625
+LPF IT N SCL RSM 0.1 12 36,0.01,0.0625
+#9
+AB= 0 $8,0.01,0.0625
+IT,0.01,0.0625
+L.M 0 3: * P I AB I,0.01,0.0625
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.replace(6, 0, "SIN + N.MIN I1 LR INV I I")
+			}, PTParseError);
+			Post << "REFS ARE " << p.scripts[6].refs << "\n";
+			this.assertEquals(p.scripts[6].refs.size, 5, "script refs after error: inner");
+			this.assertEquals(p.scripts[7].refs.size, 1, "script refs after error: middle");
+			// Now do the replace with the correct line
+			this.waitCb("replace", 2, { |cb| p.replace(6, 0, "SIN + N.MIN I1 LR INV I1 I1", true, cb)});
+			this.assertEquals(p.scripts[6].refs.size, 5, "script refs after correction: inner");
+			this.assertEquals(p.scripts[7].refs.size, 1, "script refs after correction: middle");
+		}
 	}
 }
