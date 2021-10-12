@@ -1129,7 +1129,7 @@ PTBusSendOp : PTOp {
 	}
 
 	*prepareAudio { |a|
-		^if(a.rate == \control,
+		^if(a.rate != \audio,
 				{ K2A.ar(a) },
 				{a});
 	}
@@ -1385,6 +1385,7 @@ PTParser {
 				var low = this.parseHelper(preTokens, 1, ctx);
 				var high = this.parseHelper(preTokens, low.key, ctx);
 				var results = List.new;
+				var newNode;
 				PTDbg << "low " << low << " high " << high << "\n";
 				if (low.value.isConstant.not || high.value.isConstant.not || (high.value.min <= low.value.min), {
 					PTParseError.new("L.MIX takes two constants").throw;
@@ -1401,7 +1402,8 @@ PTParser {
 					end = elt.key;
 					results.add(elt.value);
 				};
-				a = (end -> PTNode.new(PTMixOp.new("L.MIX", results.size), results, ctx['callSite']));
+				newNode = PTNode.new(PTMixOp.new("L.MIX", results.size), results, ctx['callSite']);
+				a = (end -> newNode);
 			}
 			{true} {
 				PTParseError.new("Unknown PRE: " ++ preTokens[0]).throw;
@@ -1416,6 +1418,7 @@ PTParser {
 	}
 
 	parseHelper {|tokens, pos, context|
+		var newNode;
 		counter = counter + 1;
 		if (PTDbg.slow && (counter > 6000), {
 			Error.new("Something blew up in the parser").throw;
@@ -1423,7 +1426,8 @@ PTParser {
 		^case
 		{pos >= tokens.size} { PTParseError.new("Expected token; got EOF").throw }
 		{"^-?[0-9]+\\.?[0-9]*$".matchRegexp(tokens[pos]) || "^\\.[0-9]+$".matchRegexp(tokens[pos])} {
-			pos+1 -> PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite)
+			newNode = PTNode.new(PTLiteral.new(tokens[pos].asFloat()), [], callSite: context.callSite);
+			pos+1 -> newNode
 		}
 		{ (context ? ()).includesKey(tokens[pos].asSymbol)} {
 			var op = context[tokens[pos].asSymbol];
@@ -1443,7 +1447,8 @@ PTParser {
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
-			p -> PTNode.new(op, myArgs, callSite: context.callSite)
+			newNode = PTNode.new(op, myArgs, callSite: context.callSite);
+			p -> newNode
 		}
 		{ops.includesKey(tokens[pos])} {
 			var op = ops[tokens[pos]];
@@ -1463,7 +1468,8 @@ PTParser {
 				myArgs = myArgs.add(a.value);
 				p = a.key;
 			});
-			p -> PTNode.new(op, myArgs, callSite: context.callSite)
+			newNode = PTNode.new(op, myArgs, callSite: context.callSite);
+			p -> newNode
 		}
 		{tokens[pos] == ""} {
 			this.parseHelper(tokens, pos+1, context)
@@ -1486,7 +1492,7 @@ Rules for scripts and busses and stuff (at least for now):
 */
 
 PTScriptNet {
-	var server, parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus;
+	var server, <parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus;
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
@@ -1649,11 +1655,12 @@ PTScriptNet {
 		var id = PT.randId;
 		var prevEntry = this[index-1];
 		var nextEntry = this[index];
+		var parsed = parser.parse("IT", this.contextWithItRate(PTScriptNet.nodeOf(prevEntry).rate, id: id));
 		var entry = (
 			line: nil,
 			node: nil,
 			newLine: "IT",
-			newNode: parser.parse("IT", this.contextWithItRate(PTScriptNet.nodeOf(prevEntry).rate, id: id)),
+			newNode: parsed,
 			proxy: nil,
 			fadeTime: fadeTime,
 			quant: quant,
@@ -1719,7 +1726,7 @@ PTScriptNet {
 	}
 
 	stageReplace { |idx, line|
-		var id, entry, prev, next, propagate;
+		var id, entry, prev, next, propagate, parsedLine;
 		this.assertEditing;
 		id = newOrder[idx];
 		if (id == nil, {
@@ -1736,7 +1743,8 @@ PTScriptNet {
 			PTDbg << "Found it -- replaceing a new node with another" << entry.newNode <<"\n";
 			entry.newNode.free;
 		});
-		entry['newNode'] = parser.parse(line, context: this.contextWithItRate(PTScriptNet.nodeOf(prev).rate, id: id));
+		parsedLine = parser.parse(line, context: this.contextWithItRate(PTScriptNet.nodeOf(prev).rate, id: id));
+		entry['newNode'] = parsedLine;
 		propagate = false;
 		case (
 			{entry.node == nil}, { propagate = true;},
@@ -1832,19 +1840,22 @@ PTScriptNet {
 					{entry.proxy == nil}, {
 						// New entry
 						// PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
-						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
+						var newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
+						entry['proxy'] = newP;
 						proxyIsNew = true;
 						if (node.rate == nil, {
 							PTDbg << "Nil rate node!! " << node << "\n";
 						});
 					},
 					{entry.proxy.rate != node.rate}, {
+						var newP;
 						// Rate change entry
 						// Schedule the old proxy for freeing
 						freeProxies.add(entry.proxy);
 						// Make the new one.
 						// PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
-						entry['proxy'] = this.newProxy(node.rate, entry.fadeTime, entry.quant);
+						newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
+						entry['proxy'] = newP;
 						proxyIsNew = true;
 					},
 					{ oldIdx == nil }, {},
@@ -2511,7 +2522,7 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, <description, parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
+	var server, <scripts, <description, <parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
 
 	*new { |server|
 		SynthDef(\tick, { |bus|
@@ -2656,9 +2667,11 @@ PT {
 			ctx = ();
 			ctx.parent = oldCtx;
 			5.do { |nargs|
+				var scriptOp;
 				var name = "$" ++ (i + 1);
 				if (nargs > 0, { name = (name ++ "." ++ nargs) });
-				ctx[name.asSymbol] = PTScriptOp.new(server, name, nargs, parser, script);
+				scriptOp = PTScriptOp.new(server, name, nargs, parser, script);
+				ctx[name.asSymbol] = scriptOp;
 			}
 		};
 		scripts.add(description);

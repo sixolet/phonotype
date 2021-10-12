@@ -425,7 +425,108 @@ SIN 440
 }
 
 TestPTStress : TestPTBase {
-		test_replaceMistakeTwoLayersDeepRepeatedly {
+
+	test_replaceRepeatedly{
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			Post << "synths " << Server.default.numSynths << " groups " << Server.default.numGroups << "\n";
+			// Now do the replace with the correct line
+			this.waitCb("replace", 2, { |cb| p.replace(8, 0, "SIN 220", true, cb)});
+			this.waitCb("replace", 2, { |cb| p.replace(8, 0, "SIN 440", true, cb)});
+		}
+	}
+
+	test_badParseRepeatedly {
+		10000.do {
+			p.reset;
+			this.assertException({
+				p.parser.parse("ASDF", nil);
+			}, PTParseError);
+		}
+	}
+
+
+	test_badParseWithContextRepeatedly {
+		10000.do { |i|
+			p.reset;
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.scripts[8].refs.do { |net|
+					net.startEdit;
+					net.parser.parse("ASDF", net.contextWithItRate(\audio, id: "asdfwew"));
+				};
+			}, PTParseError);
+		}
+	}
+
+	test_mistakeRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.replace(8, 0, "ASDF")
+			}, PTParseError);		}
+	}
+
+	test_checkErrorRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.replace(8, 0, "/ SIN 440 0")
+			}, PTCheckError);		}
+	}
+
+	test_mistakeScriptRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			p.reset;
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.scripts[8].replace(0, "ASDF")
+		}, PTParseError, "throws right exception");		}
+	}
+
+	test_mistakeNetRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		3000.do { |i|
+			p.reset;
+			Post << "iteration " << i << "\n";
+			this.assertException({
+				p.scripts[8].refs.do { |net|
+					net.startEdit;
+					net.stageReplace(1, "ASDF")
+				};
+			}, PTParseError);		}
+	}
+
+	test_replaceTwoLayersDeepRepeatedly {
 		this.waitCb("load", 2, { |cb|
 			p.load("
 #7
@@ -442,6 +543,59 @@ L.M 0 3: * P I AB I,0.01,0.0625
 		Post << "LOADED "<< p << "\n";
 		1000.do { |i|
 			Post << "iteration " << i << "\n";
+			Post << "synths " << Server.default.numSynths << " groups " << Server.default.numGroups << "\n";
+			this.waitCb("replace", 2, { |cb| p.replace(6, 0, "SIN + N.MIN I1 LR INV I1 I1", true, cb)});
+			this.assertEquals(p.scripts[6].refs.size, 5, "script refs after correction: inner");
+			this.assertEquals(p.scripts[7].refs.size, 1, "script refs after correction: middle");
+		}
+	}
+
+	// Fails. Current minimal repro.
+	test_replaceMistakeOnlyTwoLayersDeepRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N.MIN I1,0.01,0.0625
+* IT UNI RSM 0.1,0.01,0.0625
+#8
+L.M 0 4: $7.1 * 2 I,5.1199943532759,0.0625
+LPF IT N SCL RSM 0.1 12 36,0.01,0.0625
+#9
+AB= 0 $8,0.01,0.0625
+IT,0.01,0.0625
+L.M 0 3: * P I AB I,0.01,0.0625
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			Post << "synths " << Server.default.numSynths << " groups " << Server.default.numGroups << "\n";
+			this.assertException({
+				p.replace(6, 0, "SIN + N.MIN I1 LR INV I I")
+			}, PTParseError);
+			Post << "REFS ARE " << p.scripts[6].refs << "\n";
+			this.assertEquals(p.scripts[6].refs.size, 5, "script refs after error: inner");
+			this.assertEquals(p.scripts[7].refs.size, 1, "script refs after error: middle");
+		}
+	}
+
+	test_replaceMistakeTwoLayersDeepRepeatedly {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#7
+SIN N.MIN I1,0.01,0.0625
+* IT UNI RSM 0.1,0.01,0.0625
+#8
+L.M 0 4: $7.1 * 2 I,5.1199943532759,0.0625
+LPF IT N SCL RSM 0.1 12 36,0.01,0.0625
+#9
+AB= 0 $8,0.01,0.0625
+IT,0.01,0.0625
+L.M 0 3: * P I AB I,0.01,0.0625
+", cb)});
+		Post << "LOADED "<< p << "\n";
+		1000.do { |i|
+			Post << "iteration " << i << "\n";
+			Post << "synths " << Server.default.numSynths << " groups " << Server.default.numGroups << "\n";
 			this.assertException({
 				p.replace(6, 0, "SIN + N.MIN I1 LR INV I I")
 			}, PTParseError);
@@ -453,5 +607,104 @@ L.M 0 3: * P I AB I,0.01,0.0625
 			this.assertEquals(p.scripts[6].refs.size, 5, "script refs after correction: inner");
 			this.assertEquals(p.scripts[7].refs.size, 1, "script refs after correction: middle");
 		}
+	}
+}
+
+MinimalTumbler {
+
+	fallDown {
+		Error.new("I am a big doofus and I broke the GC").throw;
+		^0;
+	}
+}
+
+MinimalPratfall {
+
+	var event, tumbler, store;
+
+	*new {
+		^super.newCopyArgs((wiggle: "ASDF", waggle: "nonsense"), MinimalTumbler.new);
+	}
+
+	tumble {
+		event['nothingGoodComesOfThis'] = tumbler.fallDown;
+	}
+
+	topple {
+		var foo = tumbler.fallDown;
+		event['thisMightWork'] = foo;
+	}
+
+	waver {
+		store = ('x' -> tumbler.fallDown);
+	}
+
+	wobble {
+		^12 + tumbler.fallDown;
+	}
+
+	cache {
+		store = tumbler.fallDown;
+	}
+
+	passout {
+		^tumbler.fallDown;
+	}
+
+}
+
+MinimalGcBugTest : UnitTest {
+
+	test_gcBug {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.tumble;
+			}, Error, "this does error");
+		};
+	}
+	test_minimallyDifferent {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.topple;
+			}, Error, "this does error");
+		};
+	}
+
+	test_wavering {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.waver;
+			}, Error, "this does error");
+		};
+	}
+
+	test_wobbling {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.wobble;
+			}, Error, "this does error");
+		};
+	}
+
+	test_cacheing {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.cache;
+			}, Error, "this does error");
+		};
+	}
+
+	test_passingout {
+		var pf = MinimalPratfall.new;
+		10000.do {
+			this.assertException({
+				pf.passout;
+			}, Error, "this does error");
+		};
 	}
 }
