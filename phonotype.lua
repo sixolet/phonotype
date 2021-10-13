@@ -1,6 +1,46 @@
 -- PHONOTYPE
 -- phonotype exists between 
 -- keyboard and speaker
+--
+-- Plug a computer keyboard
+-- M is your "main"
+-- The last line in M outputs
+--
+-- Keys:
+-- Arrow keys navigate
+-- Function keys jump to scripts
+-- Esc jumps to scene description
+-- In scene description Alt+Enter saves
+-- Choose scene from params menu to load
+-- Shift+Alt+Esc loads a fresh scene
+-- 
+-- Mini tutorial
+-- Try 
+-- SIN 440 
+-- in M. 
+-- 
+-- Then on the next
+-- line put 
+-- * IT PERC QN .5
+-- (QN = quarter notes.
+--  .5 is our env decay)
+-- 
+-- Now add
+-- + IT * .5 DEL.F IT * .75 M 3
+-- DEL.F is a delay w/ feedback
+-- we delay by a dotted eigth
+-- with a 3s decay.
+-- 
+-- Then go back
+-- to the first line.
+-- Hit ctrl-enter to get
+-- A new line above
+-- Make it say
+-- S+H SCL SIN .1 0 7 QN
+-- and change
+-- SIN 440
+-- to say
+-- SIN N.MIN IT
 
 engine.name = "Phonotype"
 
@@ -373,10 +413,17 @@ function keyboard.code(key, value)
         if current_script ~= s then model:to_line(1) end --if we don't change scripts, don't change lines
       end
     elseif key == "ESC" then
-      editing_script = 10 -- this is the description
-      edit_row = 1
-      editing = model:get(editing_script, edit_row)
-      edit_col = string.len(editing) + 1
+      -- New script
+      if model:super() and keyboard.shift() then
+        edit_row = 1
+        edit_col = 1
+        model:load(editing_script, "")
+      else
+        editing_script = 10 -- this is the description
+        edit_row = 1
+        editing = model:get(editing_script, edit_row)
+        edit_col = string.len(editing) + 1
+      end
     elseif key == "C" and model:super() then
       clipboard = editing
     elseif key == "X" and model:super() then

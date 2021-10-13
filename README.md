@@ -50,6 +50,20 @@ Shift-enter inserts a new "passthrough" line above the current one.
 
 K2 adjusts the fade time of the current line.
 
+## Mini-tutorial
+
+Try `SIN 440` in M.
+
+Then on the next line put `* IT PERC QN .5` (`QN` = quarter notes.  `.5` is our env
+decay)
+
+Now add `+ IT * .5 DEL.F IT * .75 M 3`. `DEL.F` is a delay w/ feedback. We delay
+by a dotted eigth with a 3s decay.
+
+Then go back to the first line.  Hit ctrl-enter to get a new line above. Make it
+say `S+H SCL SIN .1 0 7 QN` and change `SIN 440` to say `SIN N.MIN IT`.
+
+
 ## Saving and Loading
 
 While in the scene description, Ctrl-Enter or Alt-Enter saves your scene, with
@@ -57,6 +71,8 @@ the filename based on the first line of your scene description.
 
 To load a scene, change the `scene` parameter (on the params page) to a file of
 your choice.
+
+To load a fresh scene, press Ctrl-Shift-Escape.
 
 ## Operators
 
@@ -530,6 +546,18 @@ in range.
 Scale 0 to 1.
 
 1. Signal to scale
+
+`CLIP` - 3 - Clip
+
+1. Signal to clip
+2. Lower bound
+3. Upper bound
+
+`WRP`/`WRAP` - 3 - Wrap
+
+1. Signal to wrap
+2. Lower bound
+3. Upper bound
 
 `FOLD` - 2 - Wavefolder
 

@@ -1,7 +1,25 @@
 PTDbg : Post {
-	classvar <>debug = true;
-	classvar <>slow = true;
+	classvar <>debug = false;
+	classvar <>slow = false;
 	classvar <>complexity = 0;
+	classvar <>f = nil;
+
+	* manageFile {
+		if(PTDbg.debug, {
+			if (PTDbg.f == nil, {
+				if (PathName.new("~/data/phonotype").isFolder, {
+					PTDbg.f = File.open(PathName.new("~/dust/data/phonotype/debug.txt").fullPath, "w");
+				}, {
+					PTDbg.f = File.open(PathName.new("~/debug.txt").fullPath, "w");
+				});
+			});
+		}, {
+			if (PTDbg.f != nil, {
+				f.close;
+				f = nil;
+			});
+		});
+	}
 
 	* complex {
 		complexity = complexity + 1;
@@ -11,12 +29,18 @@ PTDbg : Post {
 	}
 
 	* put { arg item;
+		PTDbg.manageFile;
 		if (PTDbg.debug, {
+			PTDbg.f.put(item);
+			PTDbg.f.flush;
 			item.post;
 		});
 	}
 	* putAll { arg aCollection;
+		PTDbg.manageFile;
 		if (PTDbg.debug, {
+			PTDbg.f.putAll(aCollection);
+			PTDbg.f.flush;
 			aCollection.post;
 		});
 	}
@@ -719,7 +743,7 @@ PTInOp : PTOp {
 	}
 
 	instantiate { |args, resources|
-		^In.ar(0, 2);
+		^SoundIn.ar([0, 1]);
 	}
 }
 
@@ -1070,10 +1094,10 @@ PTCrushOp : PTOp {
 
 PTBusOp : PTOp {
 
-	var rate, busses, min, max;
+	var rate, busses, min, max, lag;
 
-	*new { |name, rate, busses, min= -10, max= 10|
-		^super.newCopyArgs(name, 1, rate, busses, min, max);
+	*new { |name, rate, busses, min= -10, max= 10, lag=nil|
+		^super.newCopyArgs(name, 1, rate, busses, min, max, lag);
 	}
 
 	check { |args|
@@ -1095,7 +1119,8 @@ PTBusOp : PTOp {
 
 	instantiate { |args, resources|
 		var n = args[0].min;
-		^if (rate == \audio, {InFeedback.ar(busses[n].index, numChannels: 2)}, {busses[n].kr});
+		var ret = if (rate == \audio, {InFeedback.ar(busses[n].index, numChannels: 2)}, {busses[n].kr});
+		^ if (lag == nil, {ret}, {ret.lag(lag)});
 	}
 
 	rate { |args|
@@ -1373,6 +1398,7 @@ PTParser {
 		var sides = s.split($:);
 		var preTokens, a, end, tokens;
 		counter = counter + 1;
+		PTDbg << "parse " << counter << "\n";
 		if (sides.size == 1, {
 			tokens = sides[0].split($ );
 			a = this.parseHelper(tokens, 0, ctx);
@@ -1413,12 +1439,14 @@ PTParser {
 			if (tokens[end] != "", {
 				PTParseError.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
 			});
+			end = end + 1;
 		});
 		^a.value;
 	}
 
 	parseHelper {|tokens, pos, context|
 		var newNode;
+		PTDbg << "parse helper " << counter << " pos " << pos << "\n";
 		counter = counter + 1;
 		if (PTDbg.slow && (counter > 6000), {
 			Error.new("Something blew up in the parser").throw;
@@ -1533,7 +1561,7 @@ PTScriptNet {
 			var a = args[i];
 			var n = if (callSite != nil, {
 				var p;
-				// PTDbg << "New proxy on init for " << this << "\n";
+				PTDbg << "New proxy on init for " << this << "\n";
 				p = callSite.net.newProxy(rate: nil, fadeTime: 0, quant: 0);
 				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
 				p;
@@ -1546,7 +1574,7 @@ PTScriptNet {
 			if (
 				a != nil,
 				{
-					// PTDbg << "Setting arg source to " << a << "\n";
+					PTDbg << "Setting arg source to " << a << "\n";
 					n.source = { PTScriptNet.maybeMakeStereo(a.instantiate) };
 				},
 				{ n.source = {0.0} }
@@ -1576,7 +1604,9 @@ PTScriptNet {
 	newProxy { |rate=nil, fadeTime, quant|
 		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
 		ret.fadeTime = fadeTime;
-		ret.quant = quant;
+		if (quant != nil, {
+			ret.quant = Quant.new(quant, -0.01);
+		});
 		ret.set(\i1, argProxies[0]);
 		ret.set(\i2, argProxies[1]);
 		ret.set(\i3, argProxies[2]);
@@ -1743,7 +1773,9 @@ PTScriptNet {
 			PTDbg << "Found it -- replaceing a new node with another" << entry.newNode <<"\n";
 			entry.newNode.free;
 		});
+		PTDbg << "Replace gonna parse\n";
 		parsedLine = parser.parse(line, context: this.contextWithItRate(PTScriptNet.nodeOf(prev).rate, id: id));
+		PTDbg << "Replace parsed\n";
 		entry['newNode'] = parsedLine;
 		propagate = false;
 		case (
@@ -1780,7 +1812,7 @@ PTScriptNet {
 		var node = dict[order[index]];
 		node['quant'] = quant;
 		if (node.proxy != nil, {
-			node.proxy.quant = quant;
+			node.proxy.quant = Quant.new(quant, -0.01);
 		});
 	}
 
@@ -1809,7 +1841,7 @@ PTScriptNet {
 	commit { |cb|
 		var outEntry = dict[newOrder.last];
 		if (argProxies == nil, {
-			// PTDbg << "INITIALIZING ARG PROXIES\n";
+			PTDbg << "INITIALIZING ARG PROXIES\n";
 			this.initArgProxies;
 		});
 		^Routine.new({
@@ -1839,8 +1871,9 @@ PTScriptNet {
 				case (
 					{entry.proxy == nil}, {
 						// New entry
-						// PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
-						var newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
+						var newP;
+						PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
+						newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						entry['proxy'] = newP;
 						proxyIsNew = true;
 						if (node.rate == nil, {
@@ -1853,7 +1886,7 @@ PTScriptNet {
 						// Schedule the old proxy for freeing
 						freeProxies.add(entry.proxy);
 						// Make the new one.
-						// PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
+						PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 						newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
 						entry['proxy'] = newP;
 						proxyIsNew = true;
@@ -1867,7 +1900,7 @@ PTScriptNet {
 				case(
 					{prevEntry == nil}, {/*pass*/},
 					{proxyIsNew }, {
-						// PTDbg << "connecting proxies for " << idx << "\n";
+						PTDbg << "connecting proxies for " << idx << "\n";
 						prevEntry.proxy <>> entry.proxy;
 					},
 					{oldPreviousWasDifferent || prevProxyIsNew}, {
@@ -1905,7 +1938,7 @@ PTScriptNet {
 			server.sync;
 			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
-			// PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
+			PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
 			deferredConnections.do { |x| x.to.proxy.xset(\in, x.from.proxy) };
 			// Stage 4: Collect anything no longer needed. Exit the transaction.
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
@@ -1931,7 +1964,7 @@ PTScriptNet {
 			// If we needed to fade a proxy, schedule the free for after the fade.
 			if (lastProxy != nil, {
 				TempoClock.schedAbs(
-					TempoClock.nextTimeOnGrid(quant: lastProxy.quant ? 0, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
+					TempoClock.nextTimeOnGrid(quant: lastProxy.quant.quant ? 0, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
 					freeFn);
 			}, freeFn);
 		});
@@ -2421,7 +2454,10 @@ PTScript {
 			todo.do { |r|
 				PTDbg.complex;
 				try {
-					var candidate = f.value(r);
+					var candidate;
+					PTDbg << "in stage loop\n";
+					candidate = f.value(r);
+					PTDbg << "got candidate\n";
 					toCommit.add(candidate);
 				} { |err|
 					// If we error in the middle of adjusting a net, we need to abort that net too, along with any others.
@@ -2476,7 +2512,9 @@ PTScript {
 		linesDraft = List.newFrom(lines);
 		linesDraft[index] = line;
 		this.makeHappen({ |r|
+			PTDbg << "replace starting edit\n";
 			r.startEdit;
+			PTDbg << "replace stage replace\n";
 			r.stageReplace(index+1, line)
 		}, topLevel, callback, "replace");
 		lines[index] = line;
@@ -2525,6 +2563,7 @@ PT {
 	var server, <scripts, <description, <parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
 
 	*new { |server|
+		Post << "Adding tick\n";
 		SynthDef(\tick, { |bus|
 			var env = Env(levels: [0, 1, 0], times: [0, 0.01], curve: 'hold');
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
@@ -2597,7 +2636,8 @@ PT {
 			// Default output gain.
 			param_busses[18].value = 0.4;
 		});
-		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1);
+		// 10 ms lag on params so they crunch less with midi controllers
+		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1, 0.01);
 		ctx['PRM'] = ctx['PARAM'];
 		ctx['P'] = ctx['PARAM'];
 		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16], 0.1, 2);
@@ -2778,7 +2818,9 @@ PT {
 			control_busses.do { |b| b.free };
 			out_proxy.clear;
 			callback.value;
-			SynthDef.removeAt(\tick);
+			// Removed because I think norns calls
+			// alloc before it is done with free.
+			// SynthDef.removeAt(\tick);
 		});
 	}
 

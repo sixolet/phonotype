@@ -276,6 +276,59 @@ SIN 440
 	 	this.assertEquals(p.scripts[8].lines, List.newFrom(["SIN 440", "* IT 0.5"]));
 	}
 
+	test_replaceSpaceAtEnd {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.waitCb("replace", 2, { |cb|
+			p.replace(8, 1, "SIN 220  ", true, cb);
+		});
+	}
+
+	test_replaceMixNotConstant {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.assertException({
+			p.replace(8, 1, "L.MIX 0 SIN 1: SIN I");
+		}, PTParseError);
+	}
+
+	test_replaceTooManyTokens {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.assertException({
+			p.replace(8, 1, "SIN 200 200");
+		}, PTParseError);
+	}
+
+	test_replaceTooFewTokens {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#9
+SIN 440
+* IT 0.5
+",
+				cb)});
+		this.assertException({
+			p.replace(8, 1, "SIN");
+		}, PTParseError);
+	}
+
+
 	 test_replaceFailsThenSucceeds1 {
 		this.waitCb("load", 2, { |cb|
 			p.load("
@@ -322,6 +375,26 @@ SIN 440
 	 	this.assertEquals(p.scripts[0].refs.size, 1);
 		this.waitCb("replace", 2, { |cb| p.replace(0, 0, "TRI * 2 I1", true, cb)});
 		this.assertEquals(p.scripts[0].lines, List.newUsing(["TRI * 2 I1"]));
+		this.assertEquals(p.scripts[0].refs.size, 1);
+	}
+
+	test_badScriptCallFixed {
+		this.waitCb("load", 2, { |cb|
+			p.load("
+#1
+ASDF
+#9
+SIN 440
+* IT SIN 1
+", cb, {|e| e.reportError;})});
+		this.assertException({
+			p.replace(8, 1, "$1.1 IT");
+		}, PTParseError);
+		this.assertEquals(p.scripts[8].lines, List.newUsing(["SIN 440", "* IT SIN 1"]));
+	 	this.assertEquals(p.scripts[0].refs.size, 0);
+		this.waitCb("replace", 2, { |cb| p.replace(0, 0, "TRI + 220 * 220 I1", true, cb)});
+		this.assertEquals(p.scripts[0].lines, List.newUsing(["TRI + 220 * 220 I1"]));
+		this.waitCb("replace", 2, { |cb| p.replace(8, 1, "$1.1 IT", true, cb)});
 		this.assertEquals(p.scripts[0].refs.size, 1);
 	}
 
