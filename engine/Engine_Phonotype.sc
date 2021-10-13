@@ -1963,8 +1963,9 @@ PTScriptNet {
 			};
 			// If we needed to fade a proxy, schedule the free for after the fade.
 			if (lastProxy != nil, {
+				var q = if (lastProxy.quant == nil, {0}, {lastProxy.quant.quant ? 0});
 				TempoClock.schedAbs(
-					TempoClock.nextTimeOnGrid(quant: lastProxy.quant.quant ? 0, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
+					TempoClock.nextTimeOnGrid(quant: q, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
 					freeFn);
 			}, freeFn);
 		});
