@@ -682,7 +682,7 @@ L.M 0 3: * P I AB I,0.01,0.0625
 		}
 	}
 }
-
+/*
 MinimalTumbler {
 
 	fallDown {
@@ -724,9 +724,9 @@ MinimalPratfall {
 		^tumbler.fallDown;
 	}
 
-}
+}*/
 
-MinimalGcBugTest : UnitTest {
+/*MinimalGcBugTest : UnitTest {
 
 	test_gcBug {
 		var pf = MinimalPratfall.new;
@@ -780,4 +780,4 @@ MinimalGcBugTest : UnitTest {
 			}, Error, "this does error");
 		};
 	}
-}
+}*/

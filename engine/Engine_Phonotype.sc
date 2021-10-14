@@ -414,6 +414,73 @@ PT01DelegatedOp : PTOp {
 
 }
 
+PTPosOp : PTOp {
+	*new {
+		^super.newCopyArgs("POS", 1);
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.clip(0, inf);
+	}
+}
+
+PTLpgOp : PTOp {
+	*new {
+		^super.newCopyArgs("LPG", 2);
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	rate {
+		^\audio;
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args, resources);
+		var laggy = iargs[1].clip(0, inf).lagud(0.015, 0.15);
+		^(laggy * LPF.ar(iargs[0], laggy.linexp(0, 1, 20, 20000)));
+	}
+}
+
+PTDJFOp : PTOp {
+	*new {
+		^super.newCopyArgs("DJF", 2);
+	}
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	rate {
+		^\audio;
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args, resources);
+		var hpf = iargs[1].clip(0, 1).linexp(0, 1, 20, 20000);
+		var lpf = (1 + (iargs[1].clip(-1, 0))).linexp(0, 1, 20, 20000);
+		^HPF.ar(LPF.ar(iargs[0], lpf), hpf);
+	}
+}
+
 PTFilterOp : PTOp {
 	var c;
 
@@ -692,10 +759,10 @@ PTModOp : PTOp {
 }
 
 PTArgOp : PTOp {
-	var symbol, r;
+	var symbol, r, minVal, maxVal;
 
-	*new { |name, symbol, rate|
-		^super.newCopyArgs(name, 0, symbol, rate);
+	*new { |name, symbol, rate, minVal = -10, maxVal = 10|
+		^super.newCopyArgs(name, 0, symbol, rate, minVal, maxVal);
 	}
 
 	rate { |args, resources|
@@ -703,11 +770,11 @@ PTArgOp : PTOp {
 	}
 
 	min { |args, resources|
-		^-10;
+		^minVal;
 	}
 
 	max { |args, resources|
-		^10;
+		^maxVal;
 	}
 
 	instantiate { |args, resources|
@@ -775,6 +842,51 @@ PTLROp : PTOp {
 		var iargs = PTOp.instantiateAll(args, resources);
 		PTDbg << "IARGS " << iargs << "\n";
 		^[PTLROp.mono(iargs[0]), PTLROp.mono(iargs[1])];
+	}
+}
+
+PTMonoOp : PTOp {
+	*new {
+		^super.newCopyArgs("MONO", 1);
+	}
+
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args, resources);
+		^PTLROp.mono(iargs[1]);
+	}
+}
+
+PTRotateOp : PTOp {
+	*new {
+		^super.newCopyArgs("ROT", 2);
+	}
+
+
+	min { |args, resources|
+		^args[0].min;
+	}
+
+	max { |args, resources|
+		^args[0].max;
+	}
+
+	*mono { |ugen|
+		^if (ugen.size == 0, {ugen}, {ugen.sum / ugen.size});
+	}
+
+	instantiate { |args, resources|
+		var iargs = PTOp.instantiateAll(args, resources);
+		var stereo = PTScriptNet.maybeMakeStereo(iargs[0]);
+		^this.instantiateHelper(Rotate2, this.rate(args), [stereo[0], stereo[1], PTLROp.mono(iargs[1])]);
 	}
 }
 
@@ -937,7 +1049,57 @@ PTScaleOp : PTOp {
 		var newMin = args[1].min;
 		var newMax = args[2].min;
 
-		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin)) * (newMax - newMin) + newMin;
+		^ args[0].instantiate.linlin(oldMin, oldMax, newMin, newMax, clip: nil);
+	}
+}
+
+PTScaleExpOp : PTOp {
+	*new {
+		^super.newCopyArgs("SCL.X", 3);
+	}
+
+	check { |args|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		var newMin = args[1].min;
+		var newMax = args[2].min;
+		if (args[1].isConstant.not, {
+			PTCheckError.new("Expected constant, got " ++ args[1].op.name).throw;
+		});
+		if (args[2].isConstant.not, {
+			PTCheckError.new("Expected constant, got " ++ args[2].op.name).throw;
+		});
+		if (oldMin >= oldMax, {
+			PTCheckError.new("Signal is constant or bad range data").throw;
+		});
+		if (newMin >= newMax, {
+			PTCheckError.new("Min greater than max").throw;
+		});
+		if ((newMin <= 0) || (newMax <= 0), {
+			PTCheckError.new("Output must be greater than zero");
+		});
+	}
+
+	min { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+
+		^args[1].min;
+	}
+
+	max { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		^args[2].max;
+	}
+
+	instantiate { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		var newMin = args[1].min;
+		var newMax = args[2].min;
+
+		^ args[0].instantiate.linexp(oldMin, oldMax, newMin, newMax, clip: 'minmax');
 	}
 }
 
@@ -965,7 +1127,75 @@ PTUniOp : PTOp {
 	instantiate { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
-		^ ((args[0].instantiate - oldMin)/(oldMax - oldMin));
+		^args[0].instantiate.linlin(oldMin, oldMax, 0, 1);
+	}
+}
+
+PTSclVOp : PTOp {
+	*new {
+		^super.newCopyArgs("SCL.V", 1);
+	}
+
+	check { |args|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		if (oldMin >= oldMax, {
+			PTCheckError.new("Signal is constant or bad range data").throw;
+		});
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		^args[0].instantiate.lincurve(oldMin, oldMax, 0, 1, curve: 4);
+	}
+}
+
+PTBiOp : PTOp {
+	*new {
+		^super.newCopyArgs("BI", 1);
+	}
+
+	min { |args, resources|
+		^-1;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		^args[0].instantiate.linlin(oldMin, oldMax, -1, 1, clip: nil);
+	}
+}
+
+PTSclFOp : PTOp {
+	*new {
+		^super.newCopyArgs("SCL.F", 1);
+	}
+
+	min { |args, resources|
+		^20;
+	}
+
+	max { |args, resources|
+		^20000;
+	}
+
+	instantiate { |args, resources|
+		var oldMin = args[0].min;
+		var oldMax = args[0].max;
+		^args[0].instantiate.linexp(oldMin, oldMax, 20, 20000, clip: 'minmax');
 	}
 }
 
@@ -1329,6 +1559,8 @@ PTParser {
 
 			"LR" -> PTLROp.new,
 			"PAN" -> PTFilterOp.new("PAN", 2, Pan2),
+			"MONO" -> PTMonoOp.new,
+			"ROT" -> PTRotateOp.new,
 
 			"LPF" -> PTFilterOp.new("LPF", 2, LPF),
 			"BPF" -> PTFilterOp.new("BPF", 2, BPF),
@@ -1336,6 +1568,8 @@ PTParser {
 			"RLPF" -> PTFilterOp.new("RLPF", 3, RLPF),
 			"RHPF" -> PTFilterOp.new("RHPF", 3, RHPF),
 			"MOOG" -> PTFilterOp.new("MOOG", 3, MoogFF),
+			"LPG" -> PTLpgOp.new,
+			"DJF" -> PTDJFOp.new,
 
 			"RING" -> PTFilterOp.new("RING", 3, Ringz),
 
@@ -1370,10 +1604,15 @@ PTParser {
 			"INV" -> PTInvOp.new,
 			"WRAP" -> PTWrapOp.new,
 			"WRP" -> PTWrapOp.new,
+			"POS" -> PTPosOp.new,
 			"CLIP" -> PTClipOp.new,
 			"MIN" -> PTMinOp.new,
 			"MAX" -> PTMaxOp.new,
 			"SCL" -> PTScaleOp.new,
+			"SCL.V" -> PTSclVOp.new,
+			"SCL.F" -> PTSclFOp.new,
+			"SCL.X" -> PTScaleExpOp.new,
+			"BI" -> PTBiOp.new,
 			"UNI" -> PTUniOp.new,
 			"FLOOR" -> PTFloorOp.new,
 			"TANH" -> PTTanhOp.new,
@@ -1586,11 +1825,14 @@ PTScriptNet {
 	// Get a context for evaluation where the previous line has rate r.
 	contextWithItRate { |r, id|
 		var ret = (
-			I1: PTArgOp("I1", \i1, args[0].rate),
-			I2: PTArgOp("I2", \i2, args[1].rate),
-			I3: PTArgOp("I3", \i3, args[2].rate),
-			I4: PTArgOp("I4", \i1, args[3].rate),
+			I1: PTArgOp("I1", \i1, args[0].rate, args[0].min, args[0].max),
+			I2: PTArgOp("I2", \i2, args[1].rate, args[1].min, args[1].max),
+			I3: PTArgOp("I3", \i3, args[2].rate, args[2].min, args[2].max),
+			I4: PTArgOp("I4", \i1, args[3].rate, args[3].min, args[3].max),
 			IT: PTArgOp("IT", \in, r),
+			'IT.F': PTArgOp("IT.F", \in, r, 20, 20000),
+			'IT.U': PTArgOp("IT.F", \in, r, 0, 1),
+			'IT.B': PTArgOp("IT.F", \in, r, -1, 1),
 			J: PTNamedLazyBusOp("J", \audio, jBus),
 			K: PTNamedLazyBusOp("K", \control, kBus),
 			'J=': PTNamedLazyBusSendOp("J", \audio, jBus),
@@ -2592,6 +2834,9 @@ PT {
 
 	putBusOps { |ctx, name, bus, rate|
 		ctx[name.asSymbol] = PTNamedBusOp.new(name, rate, bus);
+		ctx[(name ++ ".F").asSymbol] = PTNamedBusOp.new(name ++ ".F", rate, bus, 20, 20000);
+		ctx[(name ++ ".U").asSymbol] = PTNamedBusOp.new(name ++ ".U", rate, bus, 0, 1);
+		ctx[(name ++ ".B").asSymbol] = PTNamedBusOp.new(name ++ ".B", rate, bus, -1, 1);
 		ctx[(name ++ "=").asSymbol] = PTNamedBusSendOp.new(name ++ "=", rate, bus);
 	}
 
@@ -2604,6 +2849,9 @@ PT {
 			};
 		});
 		ctx['AB'] = PTBusOp.new("AB", \audio, audio_busses);
+		ctx['AB.F'] = PTBusOp.new("AB.F", \audio, audio_busses, 20, 20000);
+		ctx['AB.U'] = PTBusOp.new("AB.U", \audio, audio_busses, 0, 1);
+		ctx['AB.B'] = PTBusOp.new("AB.B", \audio, audio_busses, -1, 1);
 		ctx['AB='] = PTBusSendOp.new("AB=", \audio, audio_busses);
 		this.putBusOps(ctx, "A", audio_busses[16], \audio);
 		this.putBusOps(ctx, "B", audio_busses[17], \audio);
@@ -2618,6 +2866,9 @@ PT {
 			};
 		});
 		ctx['CB'] = PTBusOp.new("CB", \control, control_busses);
+		ctx['CB.F'] = PTBusOp.new("CB.F", \control, control_busses, 20, 20000);
+		ctx['CB.U'] = PTBusOp.new("CB.U", \control, control_busses, 0, 1);
+		ctx['CB.B'] = PTBusOp.new("CB.B", \control, control_busses, -1, 1);
 		ctx['CB='] = PTBusSendOp.new("CB=", \control, control_busses);
 		this.putBusOps(ctx, "W", control_busses[16], \control);
 		this.putBusOps(ctx, "X", control_busses[17], \control);
