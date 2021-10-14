@@ -475,8 +475,8 @@ PTDJFOp : PTOp {
 
 	instantiate { |args, resources|
 		var iargs = PTOp.instantiateAll(args, resources);
-		var hpf = iargs[1].clip(0, 1).linexp(0, 1, 20, 20000);
-		var lpf = (1 + (iargs[1].clip(-1, 0))).linexp(0, 1, 20, 20000);
+		var hpf = iargs[1].clip(0, 1).linexp(0, 1, 20, 10000);
+		var lpf = (1 + (iargs[1].clip(-1, 0))).linexp(0, 1, 40, 20000);
 		^HPF.ar(LPF.ar(iargs[0], lpf), hpf);
 	}
 }
@@ -1155,7 +1155,7 @@ PTSclVOp : PTOp {
 	instantiate { |args, resources|
 		var oldMin = args[0].min;
 		var oldMax = args[0].max;
-		^args[0].instantiate.lincurve(oldMin, oldMax, 0, 1, curve: 4);
+		^args[0].instantiate.lincurve(oldMin, oldMax, 0, 1, curve: 6);
 	}
 }
 
