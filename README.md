@@ -104,7 +104,7 @@ Multiply/VCA/Ring modulate two signals.
 
 `- <arg1> <arg2>` - Subtract
 
-`\ <dividend> <divisor>` - Divide
+`/ <dividend> <divisor>` - Divide
 
 `% <modulend> <modulo>` - Mod
 
