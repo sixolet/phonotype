@@ -2881,18 +2881,26 @@ PT {
 			// 16 is the duration of a beat (exposed as M)
 			// 17 is the root note (exposed as ROOT)
 			// 18 is the output gain (not exposed internally)
-			19.do { |i|
+			// 19 is the Frequency bus
+			// 20 is the Gate bus
+			// 21 is the Velocity bus.
+			22.do { |i|
 				var bus = Bus.control(server, numChannels: 2);
 				param_busses.add(bus);
 			};
 			// Default output gain.
 			param_busses[18].value = 0.4;
+			// default frequency
+			param_busses[19].value = 440;
 		});
 		// 10 ms lag on params so they crunch less with midi controllers
 		ctx['PARAM'] = PTBusOp.new("PARAM", \control, param_busses, 0, 1, 0.01);
 		ctx['PRM'] = ctx['PARAM'];
 		ctx['P'] = ctx['PARAM'];
 		ctx['M'] = PTNamedBusOp.new("M", \control, param_busses[16], 0.1, 2);
+		ctx['F'] = PTNamedBusOp.new("F", \control, param_busses[19], 20, 10000);
+		ctx['G'] = PTNamedBusOp.new("G", \control, param_busses[20], 0, 1);
+		ctx['V'] = PTNamedBusOp.new("V", \control, param_busses[21], 0, 1);
 
 		// Set up the note operations
 		param_busses[17].value = 440;

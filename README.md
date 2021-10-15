@@ -48,7 +48,10 @@ Arrow keys choose a line to edit; enter key actually changes the line.
 
 Shift-enter inserts a new "passthrough" line above the current one.
 
-K2 adjusts the fade time of the current line.
+E2 adjusts the fade time of the current line.
+
+E3 adjusts when the line will actually be crossfaded, in beat multiples. For
+example, choose 4 to fade the line on a barline in 4/4 time.
 
 ## Mini-tutorial
 
@@ -498,6 +501,13 @@ rate - it will be whatever rate the previous line was.
 `IN` - The input
 
 Whatever you've told the Norns mixer to pass to the engine from outside.
+
+`F` - Frequency from monophonic midi in
+
+`G` - Gate from monophonic midi in
+
+`V` - Velocity from monophonic midi in
+
 
 ### Sequencing
 

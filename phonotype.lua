@@ -278,9 +278,52 @@ function init()
       param_spec)
     params:set_action(param_id, function(x) engine.set_param(i, x) end)
   end
+  
+  midi_device = {} -- container for connected midi devices
+  midi_device_names = {}
+  target = 1
+
+  for i = 1,#midi.vports do -- query all ports
+    midi_device[i] = midi.connect(i) -- connect each device
+    local full_name = 
+    table.insert(midi_device_names,"port "..i..": "..util.trim_string_to_width(midi_device[i].name,40)) -- register its name
+  end
+  
+  params:add_option("midi target", "midi target",midi_device_names,1)
+  params:set_action("midi target", midi_target)
+  params:add_binary("retrigger", "retrigger","toggle", 1)
+  params:set_action("retrigger", function (x) retrigger = x end)
+  
+  
   params:bang()
   sync_routine = clock.run(sync_every_beat)
 end
+
+function midi_target(x)
+  midi_device[target].event = nil
+  target = x
+  midi_device[target].event = process_midi
+end
+
+music = require 'musicutil'
+
+function process_midi(data)
+  local d = midi.to_msg(data)
+  if d.type == "note_on" then
+    -- global
+    note = d.note
+    engine.set_param(21, d.vel / 127)
+    engine.set_param(19, music.note_num_to_freq(d.note))
+    if retrigger then
+      engine.set_param(20, 0)
+    end
+    
+    engine.set_param(20, 1) -- gate on
+  elseif d.type == "note_off" and d.note == note then
+    engine.set_param(20, 0) -- gate off
+  end
+end
+
 
 function maybe_load_scene(full_filename)
   if loaded_scene == full_filename then
