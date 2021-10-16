@@ -293,7 +293,7 @@ function init()
   params:set_action("midi target", midi_target)
   params:add_binary("retrigger", "retrigger","toggle", 1)
   params:set_action("retrigger", function (x) retrigger = x end)
-  
+  params:add_number("bend_range", "bend range", 1, 48, 2)
   
   params:bang()
   sync_routine = clock.run(sync_every_beat)
@@ -306,6 +306,13 @@ function midi_target(x)
 end
 
 music = require 'musicutil'
+
+function set_pitch_bend(bend_st)
+  if note ~= nil then
+    engine.set_param(19, music.note_num_to_freq(note + bend_st))
+  end
+end
+
 
 function process_midi(data)
   local d = midi.to_msg(data)
@@ -321,6 +328,9 @@ function process_midi(data)
     engine.set_param(20, 1) -- gate on
   elseif d.type == "note_off" and d.note == note then
     engine.set_param(20, 0) -- gate off
+  elseif d.type == "pitchbend" then
+    local bend_st = (util.round(d.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
+    set_pitch_bend(bend_st * params:get("bend_range"))
   end
 end
 
