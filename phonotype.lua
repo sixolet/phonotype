@@ -215,6 +215,7 @@ function PTModel:push_history(line)
 end
 
 function PTModel:enter() -- moved here so we can use it when pasting, cutting, etc.
+  history_depth = 0
   if keyboard.shift() then
     model:insert_blank(editing_script, edit_row)
     editing = "IT"
