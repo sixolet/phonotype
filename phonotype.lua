@@ -57,6 +57,10 @@ clipboard = ""
 moved_line = false --moved scope so it's accessible by model:to_line()
 loaded_scene = ""
 
+Deque = require('container/deque')
+history = Deque.new()
+history_depth = 0
+
 --[[ This one is just a text editor
 
 BasicModel = {scripts = {}}
@@ -203,6 +207,13 @@ function PTModel:to_line(line) --moved repeated code here
   edit_col = string.len(editing) + 1
 end
 
+function PTModel:push_history(line)
+  history:push(line)
+  if history:count() > 10 then
+    history:pop_back()
+  end
+end
+
 function PTModel:enter() -- moved here so we can use it when pasting, cutting, etc.
   if keyboard.shift() then
     model:insert_blank(editing_script, edit_row)
@@ -210,6 +221,7 @@ function PTModel:enter() -- moved here so we can use it when pasting, cutting, e
     moved_line = true
     model:to_line(edit_row)
   elseif edit_row > model:script_size(editing_script) then
+    model:push_history(editing)
     model:add(editing_script, editing)
     model:to_line(edit_row + 1)
   elseif editing == "" then
@@ -220,6 +232,7 @@ function PTModel:enter() -- moved here so we can use it when pasting, cutting, e
     editing = model:get(editing_script, edit_row+1)
     model:to_line(edit_row)
   else
+    model:push_history(editing)
     model:replace(editing_script, edit_row, editing)
     model:to_line(edit_row + 1)
   end
@@ -406,6 +419,22 @@ function keyboard.char(character)
   redraw()
 end
 
+function edit_from_history(depth)
+  if depth == 0 then
+    editing = ""
+    edit_col = 1
+    return
+  end
+  for i, item in history:ipairs() do
+    if i == history_depth then
+      editing = item
+      edit_col = string.len(editing) + 1
+      break
+    end
+  end
+end
+
+
 function keyboard.code(key, value)
   -- print("KEY", key)
   -- print("POS", edit_col)
@@ -435,19 +464,25 @@ function keyboard.code(key, value)
     elseif key == "ENTER" then
       model:enter()
     elseif key == "UP" then
-      if edit_row == 1 then
+      if keyboard.shift() and history:count() > 0 then
+        history_depth = (history_depth + 1) % (history:count() + 1)
+        edit_from_history(history_depth)
+      elseif edit_row == 1 then
         -- pass
+      elseif model:super() and model:get(editing_script, edit_row) ~= "" then -- Added second condition to prevent weirdness when trying to shift empty lines
+        local storedLine = model:get(editing_script, edit_row - 1)
+        model:replace(editing_script, edit_row - 1, editing)
+        model:replace(editing_script, edit_row, storedLine)
+        moved_line = true
+        model:to_line(edit_row - 1)
       else
-        if model:super() and model:get(editing_script, edit_row) ~= "" then -- Added second condition to prevent weirdness when trying to shift empty lines
-            local storedLine = model:get(editing_script, edit_row - 1)
-            model:replace(editing_script, edit_row - 1, editing)
-            model:replace(editing_script, edit_row, storedLine)
-            moved_line = true
-        end
         model:to_line(edit_row - 1)
       end
     elseif key == "DOWN" then
-      if edit_row > model:script_size(editing_script) then
+      if keyboard.shift() and history:count() > 0 then
+        history_depth = (history_depth - 1) % (history:count() + 1)
+        edit_from_history(history_depth)
+      elseif edit_row > model:script_size(editing_script) then
         edit_row = model:script_size(editing_script) + 1
       else
         if model:super() and model:get(editing_script, edit_row + 1) ~= "" then

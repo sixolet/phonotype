@@ -2,6 +2,12 @@
 
 It is like Teletype but for sound.
 
+Useful for:
+
+* Custom midi (mono, for now) synths
+* Effects chains of your dreams
+* An entire dang modular in this box yo
+
 To use PHONOTYPE:
 
 * Install it onto Norns
@@ -45,6 +51,10 @@ outputs sound.
 ESC nagivates to the scene description.
 
 Arrow keys choose a line to edit; enter key actually changes the line.
+
+Ctrl- or Alt- while pressing up or down will swap lines.
+
+Shift while pressing up or down will navigate the history of lines you have entered.
 
 Shift-enter inserts a new "passthrough" line above the current one.
 
