@@ -104,6 +104,11 @@ PTOp {
 		}
 	}
 
+	usesIt { |args|
+		^args.any { |x| x.usesIt };
+	}
+
+
 	*instantiateAll { |args, resources|
 		^args.collect({|x| x.instantiate()});
 	}
@@ -154,6 +159,10 @@ PTNode {
 
 	rate {
 		^op.rate(args, resources);
+	}
+
+	usesIt {
+		^op.usesIt(args);
 	}
 
 	instantiate {
@@ -775,6 +784,10 @@ PTArgOp : PTOp {
 
 	max { |args, resources|
 		^maxVal;
+	}
+
+	usesIt {
+		^(symbol == \in);
 	}
 
 	instantiate { |args, resources|
@@ -1751,12 +1764,21 @@ PTParser {
 	}
 }
 
-/*
-Rules for scripts and busses and stuff (at least for now):
-* you can only refer to smaller-numbered scripts from larger-numbered scripts.
-* Maybe script calls have intrinsic rates, to make things simpler? That way at worst you have to change "the rest of one script"
-* Busses have intrinsic rate.
-*/
+PTLine {
+	var <>id, <>newLine, <>line, <>newNode, <>node, <>proxy, <>fadeTime, <>quant, <>connected, <>connectRate;
+
+	*new { |newLine, newNode, id=nil, fadeTime=0.01, quant=0|
+		^super.newCopyArgs(id ? PT.randId, newLine, nil, newNode, nil, nil, fadeTime, quant, nil, nil);
+	}
+
+	maybeConnectIt { |other|
+		if ((newNode ? node).usesIt && (connected == nil), {
+			proxy.set(\in, other.proxy);
+			connected = other.id;
+			connectRate = other.proxy.rate;
+		});
+	}
+}
 
 PTScriptNet {
 	var server, <parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus;
@@ -1772,8 +1794,8 @@ PTScriptNet {
 			nil,
 			Dictionary.newFrom([
 				// Possibly don't need an in node anymore, as long as we make the right context for each line.
-				"in", (newLine: "I1", line: nil, newNode: PTNode.new(PTArgOp("I1", \i1, aa[0].rate)), node: nil, proxy: nil),
-				"out", (newLine: "IT", line: nil, newNode: PTNode.new(PTArgOp("IT", \in, aa[0].rate)), node: nil, proxy: nil),
+				"in", PTLine.new("I1", PTNode.new(PTArgOp("I1", \i1, aa[0].rate)), "in"),
+				"out", PTLine.new("IT", PTNode.new(PTArgOp("IT", \in, aa[0].rate)), "out"),
 		]), PT.randId, script, aa, nil, callSite, nil, nil).init(lines);
 	}
 
@@ -1928,15 +1950,7 @@ PTScriptNet {
 		var prevEntry = this[index-1];
 		var nextEntry = this[index];
 		var parsed = parser.parse("IT", this.contextWithItRate(PTScriptNet.nodeOf(prevEntry).rate, id: id));
-		var entry = (
-			line: nil,
-			node: nil,
-			newLine: "IT",
-			newNode: parsed,
-			proxy: nil,
-			fadeTime: fadeTime,
-			quant: quant,
-		);
+		var entry = PTLine.new("IT", parsed, id, fadeTime, quant);
 		this.assertEditing;
 		dict[id] = entry;
 		newOrder.insert(index, id);
@@ -2010,7 +2024,7 @@ PTScriptNet {
 		});
 		prev = this[idx-1];
 		next = this[idx+1];
-		entry['newLine'] = line;
+		entry.newLine = line;
 		if (entry.newNode != nil, {
 			PTDbg << "Found it -- replaceing a new node with another" << entry.newNode <<"\n";
 			entry.newNode.free;
@@ -2018,7 +2032,7 @@ PTScriptNet {
 		PTDbg << "Replace gonna parse\n";
 		parsedLine = parser.parse(line, context: this.contextWithItRate(PTScriptNet.nodeOf(prev).rate, id: id));
 		PTDbg << "Replace parsed\n";
-		entry['newNode'] = parsedLine;
+		entry.newNode = parsedLine;
 		propagate = false;
 		case (
 			{entry.node == nil}, { propagate = true;},
@@ -2044,7 +2058,7 @@ PTScriptNet {
 
 	setFadeTime { |index, time|
 		var node = dict[order[index]];
-		node['fadeTime'] = time;
+		node.fadeTime = time;
 		if (node.proxy != nil, {
 			node.proxy.fadeTime = time;
 		});
@@ -2052,7 +2066,7 @@ PTScriptNet {
 
 	setQuant { |index, quant|
 		var node = dict[order[index]];
-		node['quant'] = quant;
+		node.quant = quant;
 		if (node.proxy != nil, {
 			node.proxy.quant = Quant.new(quant, -0.01);
 		});
@@ -2062,11 +2076,11 @@ PTScriptNet {
 		order.do { |id|
 			var entry = dict[id];
 			PTDbg.complex;
-			if( entry['newNode'] != nil, {
+			if( entry.newNode != nil, {
 				entry.newNode.free;
 			});
-			entry['newLine'] = nil;
-			entry['newNode'] = nil;
+			entry.newLine = nil;
+			entry.newNode = nil;
 		};
 		// At this point anything in newOrder w a newNode is *not* in order
 		newOrder.do { |id|
@@ -2116,7 +2130,7 @@ PTScriptNet {
 						var newP;
 						PTDbg << "new proxy for " << idx << " due to newness " << node.rate << "\n";
 						newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
-						entry['proxy'] = newP;
+						entry.proxy = newP;
 						proxyIsNew = true;
 						if (node.rate == nil, {
 							PTDbg << "Nil rate node!! " << node << "\n";
@@ -2130,7 +2144,7 @@ PTScriptNet {
 						// Make the new one.
 						PTDbg << "new proxy for " << idx << " due to rate change " << node.rate << "\n";
 						newP = this.newProxy(node.rate, entry.fadeTime, entry.quant);
-						entry['proxy'] = newP;
+						entry.proxy = newP;
 						proxyIsNew = true;
 					},
 					{ oldIdx == nil }, {},
