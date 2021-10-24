@@ -1796,13 +1796,17 @@ PTLine {
 					connectRate = nil;
 					xsetToThis = nil;
 				});
-				timeToFree = TempoClock.nextTimeOnGrid(quant: quant) + (TempoClock.tempo * fadeTime);
+				timeToFree = this.timeToFree;
 				PTDbg << "Resheduling free for " << timeToFree << "\n";
 				deferrals.add( {proxy.xset(\in, xsetToThis)});
 			},
 			{PTDbg << "No connection necessary\n"}
 		);
 		^timeToFree;
+	}
+
+	timeToFree {
+		^TempoClock.nextTimeOnGrid(quant: quant ? 0) + (TempoClock.tempo * (fadeTime ? 0));
 	}
 
 	usesIt {
@@ -2202,7 +2206,7 @@ PTScriptNet {
 					entry.newNode.commit;
 					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
-					timeToFree = max(timeToFree, TempoClock.nextTimeOnGrid(entry.quant ? 0) + (TempoClock.tempo * (entry.fadeTime ? 0)));
+					timeToFree = max(timeToFree, entry.timeToFree);
 					if (entry.newNode == nil, {
 						PTDbg << "WTF " << entry << "\n" << this << "\n";
 					});
