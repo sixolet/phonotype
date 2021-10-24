@@ -1771,12 +1771,42 @@ PTLine {
 		^super.newCopyArgs(id ? PT.randId, newLine, nil, newNode, nil, nil, fadeTime, quant, nil, nil);
 	}
 
-	maybeConnectIt { |other|
-		if ((newNode ? node).usesIt && (connected == nil), {
-			proxy.set(\in, other.proxy);
-			connected = other.id;
-			connectRate = other.proxy.rate;
-		});
+	maybeConnectIt { |other, deferrals|
+		var timeToFree = TempoClock.beats;
+		case (
+			{other == nil}, {},
+			{(newNode ? node).usesIt && (connected == nil)}, {
+				// If unconnected, and we need a connection, connect
+				PTDbg << "Connecting for the first time\n";
+				proxy.set(\in, other.proxy);
+				connected = other.id;
+				connectRate = other.proxy.rate;
+			},
+			{(connected != nil) && ((connected != other.id) || (connectRate != other.proxy.rate))}, {
+				// If connected and the connection quality changed, what to do depends on whether we would use a connection.
+				var xsetToThis;
+				if ((newNode ? node).usesIt, {
+					PTDbg << "Connecting new node or rate\n";
+					connected = other.id;
+					connectRate = other.proxy.rate;
+					xsetToThis = other.proxy;
+				}, {
+					PTDbg << "Disconnecting for now\n";
+					connected = nil;
+					connectRate = nil;
+					xsetToThis = nil;
+				});
+				timeToFree = TempoClock.nextTimeOnGrid(quant: quant) + (1.5 * fadeTime);
+				PTDbg << "Resheduling free for " << timeToFree << "\n";
+				deferrals.add( {proxy.xset(\in, xsetToThis)});
+			},
+			{PTDbg << "No connection necessary\n"}
+		);
+		^timeToFree;
+	}
+
+	usesIt {
+		^if ((newNode ? node) == nil, {true}, {(newNode ? node).usesIt});
 	}
 }
 
@@ -2039,9 +2069,11 @@ PTScriptNet {
 			{entry.node.rate != entry.newNode.rate}, {propagate = true;},
 		);
 		^if (propagate && (next != nil), {
-			PTDbg << "reevaluating next line " << (idx+1) << "\n";
 			PTDbg.complex;
-			this.stageReplace(idx+1, next.newLine ? next.line);
+			if (next.usesIt, {
+				PTDbg << "reevaluating next line " << (idx+1) << "\n";
+				this.stageReplace(idx+1, next.newLine ? next.line);
+			}, {this});
 		}, {
 			if (this.outputChanged && (callSite != nil), {
 				PTDbg << "reevaluating call site of " << this.id << "\n";
@@ -2107,7 +2139,7 @@ PTScriptNet {
 			var prevId = nil;
 			var prevProxyIsNew = false;
 			var connect;
-			var lastProxy = nil;
+			var timeToFree = TempoClock.beats;
 			var entriesToLeaveBehind;
 			var deferredConnections = List.new;
 			var freeFn;
@@ -2153,16 +2185,7 @@ PTScriptNet {
 						oldPreviousWasDifferent = true;
 					}
 				);
-				case(
-					{prevEntry == nil}, {/*pass*/},
-					{proxyIsNew }, {
-						PTDbg << "connecting proxies for " << idx << "\n";
-						prevEntry.proxy <>> entry.proxy;
-					},
-					{oldPreviousWasDifferent || prevProxyIsNew}, {
-						deferredConnections.add( (from: prevEntry, to: entry));
-					}
-				);
+				timeToFree = max(timeToFree, entry.maybeConnectIt(prevEntry, deferredConnections));
 				prevProxyIsNew = proxyIsNew;
 				prevId = id;
 				prevEntry = entry;
@@ -2179,13 +2202,13 @@ PTScriptNet {
 					entry.newNode.commit;
 					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
+					timeToFree = max(timeToFree, TempoClock.nextTimeOnGrid(entry.quant ? 0) + (1.5 * (entry.fadeTime ? 0)));
 					if (entry.newNode == nil, {
 						PTDbg << "WTF " << entry << "\n" << this << "\n";
 					});
 					PTDbg << "Instantiating source for " << id << " to be " << entry.newNode << "\n";
 					entry.proxy.source = { PTScriptNet.maybeMakeStereo(entry.newNode.instantiate) };
 					entry.node = entry.newNode;
-					lastProxy = entry.proxy;
 					entry.line = entry.newLine;
 					entry.newNode = nil;
 					entry.newLine = nil;
@@ -2195,7 +2218,7 @@ PTScriptNet {
 			0.07.yield;
 			// Stage 3: Connect new inputs to any "live" proxies
 			PTDbg << "Deferred connecting proxies " << deferredConnections << "\n";
-			deferredConnections.do { |x| x.to.proxy.xset(\in, x.from.proxy) };
+			deferredConnections.do { |x| x.value };
 			// Stage 4: Collect anything no longer needed. Exit the transaction.
 			entriesToLeaveBehind = order.reject({|x| newOrder.includes(x)});
 			entriesToLeaveBehind.do { |id|
@@ -2218,12 +2241,8 @@ PTScriptNet {
 				});
 			};
 			// If we needed to fade a proxy, schedule the free for after the fade.
-			if (lastProxy != nil, {
-				var q = if (lastProxy.quant == nil, {0}, {lastProxy.quant.quant ? 0});
-				TempoClock.schedAbs(
-					TempoClock.nextTimeOnGrid(quant: q, phase: TempoClock.secs2beats(lastProxy.fadeTime ? 0)),
-					freeFn);
-			}, freeFn);
+			PTDbg << "It is " << TempoClock.beats << " and we will free things at " << (timeToFree + server.latency) << "\n";
+			TempoClock.schedAbs(timeToFree + server.latency, freeFn);
 		});
 	}
 
@@ -2764,7 +2783,6 @@ PTScript {
 	}
 
 	replace { |index, line, topLevel=false, callback=nil|
-		"REPLACING % %\n".postf(index, line);
 		this.validateIndex(index, allowSize: false);
 		linesDraft = List.newFrom(lines);
 		linesDraft[index] = line;
@@ -2820,7 +2838,7 @@ PT {
 	var server, <scripts, <description, <parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
 
 	*new { |server|
-		Post << "Adding tick\n";
+		PTDbg << "Adding tick\n";
 		SynthDef(\tick, { |bus|
 			var env = Env(levels: [0, 1, 0], times: [0, 0.01], curve: 'hold');
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));

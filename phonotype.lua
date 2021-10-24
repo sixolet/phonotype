@@ -215,7 +215,6 @@ function PTModel:push_history(line)
 end
 
 function PTModel:enter() -- moved here so we can use it when pasting, cutting, etc.
-  history_depth = 0
   if keyboard.shift() then
     model:insert_blank(editing_script, edit_row)
     editing = "IT"
@@ -386,7 +385,7 @@ end
 function redraw()
   screen.clear()
   screen.level(16)
-  screen.font_face(1)
+  screen.font_face(1) -- second best, and slightly more compact, face 25 size 6
   screen.font_size(8)
   screen.move(0, 8)
   for i=1,model:script_size(editing_script),1
@@ -439,6 +438,7 @@ end
 function keyboard.code(key, value)
   -- print("KEY", key)
   -- print("POS", edit_col)
+  screen.ping()
   moved_line = false
   if value == 1 or value == 2 then -- 1 is down, 2 is held, 0 is release
     if key == "BACKSPACE" then
