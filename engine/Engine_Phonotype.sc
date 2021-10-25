@@ -1562,8 +1562,8 @@ PTParser {
 			"SAW" -> PTOscOp.new("SAW", 1, Saw, LFSaw),
 			"SQUARE" -> PTOscOp.new("SQUARE", 1, Pulse, LFPulse),
 			"PULSE" -> PTOscOpWidth.new("PULSE", 2, Pulse, LFPulse),
-			"RSTEP" -> PTOscOp.new("RSTEP", 1, LFDNoise0, LFNoise0),
-			"RRAMP" -> PTOscOp.new("RRAMP", 1, LFDNoise1, LFNoise1),
+			"RSTEP" -> PTOscOp.new("RSTEP", 1, LFDNoise0, LFDNoise0),
+			"RRAMP" -> PTOscOp.new("RRAMP", 1, LFDNoise1, LFDNoise1),
 			"RSMOOTH" -> PTOscOp.new("RSMOOTH", 1, LFDNoise3, LFDNoise3),
 			"RSM" -> PTOscOp.new("RSMOOTH", 1, LFDNoise3, LFDNoise3),
 			"WHITE" -> PTNoiseOp.new("WHITE", WhiteNoise),
@@ -2738,7 +2738,7 @@ PTScript {
 					PTDbg << "in stage loop\n";
 					candidate = f.value(r);
 					PTDbg << "got candidate\n";
-					toCommit.add(candidate);
+					if (candidate != nil, {toCommit.add(candidate)});
 				} { |err|
 					// If we error in the middle of adjusting a net, we need to abort that net too, along with any others.
 					r.abort;
@@ -2751,9 +2751,15 @@ PTScript {
 				PTCheckError.new("Output must be audio").throw;
 			});
 		} { |err|
+			Post << "Aborting; this error may be expected: \n";
+			err.reportError;
 			toCommit.do { |p|
-				PTDbg << "aborting\n";
-				p.abort;
+				if (p == nil, {
+					Post << "Thing to commit is nil?\n"
+				}, {
+					PTDbg << "aborting\n";
+					p.abort;
+				});
 			};
 			linesDraft = nil;
 			working = false;
