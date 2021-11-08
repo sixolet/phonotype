@@ -1335,6 +1335,49 @@ PTCrushOp : PTOp {
 	}
 }
 
+PTBufPlayOp :PTOp {
+	var opts, buffers, metro_bus, min, max;
+
+	// opts should be a list of some of \rate, \bpm,
+	*new { |name, opts, buffers, metro_bus, min= -1, max= 1|
+		^super.newCopyArgs(name, opts.size + 2, opts, buffers, metro_bus, min, max);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant buffer number").throw;
+		});
+		if (args[0].min >= buffers.size, {
+			PTCheckError.new(name ++ " max buffer number is " ++ buffers.size).throw;
+		});
+	}
+
+	instantiate { |args, resources|
+		var n = args[0].min;
+		var rate = 1.0;
+		opts.do { |o, i|
+			switch(o,
+				\bpm, {
+					rate = (In.kr(metro_bus)*(args[i+2].instantiate/60)).reciprocal;
+				}
+			);
+		};
+		^PlayBuf.ar(2, n, rate: rate, trigger: args[1].instantiate, doneAction: Done.none);
+	}
+
+	min { |args, resources|
+		^min;
+	}
+
+	max { |args, resources|
+		^max;
+	}
+
+	rate { |args|
+		^\audio;
+	}
+}
+
 PTBusOp : PTOp {
 
 	var rate, busses, min, max, lag;
@@ -2845,7 +2888,7 @@ PT {
 	const numScripts = 9;
 	const scriptSize = 6;
 
-	var server, <scripts, <description, <parser, <main, audio_busses, control_busses, param_busses, out_proxy, ctx;
+	var server, <scripts, <description, <parser, <main, audio_busses, control_busses, param_busses, <buffers, out_proxy, ctx;
 
 	*new { |server|
 		PTDbg << "Adding tick\n";
@@ -2854,7 +2897,7 @@ PT {
 			Out.kr(bus, EnvGen.kr(env, doneAction: Done.freeSelf));
 		}).add;
 
-		^super.newCopyArgs(server, nil, nil, PTParser.default, nil, nil, nil, nil, nil).init;
+		^super.newCopyArgs(server, nil, nil, PTParser.default, nil, nil, nil, nil, nil, nil).init;
 	}
 
 	*wrapWithCallbacks { |r, successCallback, errorCallback|
@@ -2883,6 +2926,16 @@ PT {
 	}
 
 	initBusses { |ctx|
+		if (buffers == nil, {
+			var bufAllocs = List.new;
+			buffers = List.new;
+			16.do { |i|
+				var buf = Buffer.new(server, 8*server.sampleRate, 2);
+				bufAllocs.add(buf.allocMsg);
+				buffers.add(buf);
+			};
+			server.listSendBundle(server.latency, bufAllocs);
+		});
 		if (audio_busses == nil, {
 			audio_busses = List.new;
 			20.do { |i|
@@ -2930,6 +2983,8 @@ PT {
 				var bus = Bus.control(server, numChannels: 2);
 				param_busses.add(bus);
 			};
+			// Starting tempo
+			param_busses[16].value = TempoClock.tempo.reciprocal;
 			// Default output gain.
 			param_busses[18].value = 0.4;
 			// default frequency
@@ -2943,6 +2998,10 @@ PT {
 		ctx['F'] = PTNamedBusOp.new("F", \control, param_busses[19], 20, 10000);
 		ctx['G'] = PTNamedBusOp.new("G", \control, param_busses[20], 0, 1);
 		ctx['V'] = PTNamedBusOp.new("V", \control, param_busses[21], 0, 1);
+
+		// Set up buffer operations
+		ctx['PLAY'] = PTBufPlayOp.new("PLAY", [], buffers, param_busses[16]);
+		ctx['PLAY.B'] = PTBufPlayOp.new("PLAY.B", [\bpm], buffers, param_busses[16]);
 
 		// Set up the note operations
 		param_busses[17].value = 440;
@@ -3019,6 +3078,19 @@ PT {
 		scripts.add(description);
 		main = PTScriptNet.new(server: server, parser: parser, lines: [],
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
+	}
+
+	loadBuffer { |i, size, filepath|
+		Routine.new({
+			if (filepath != "", {
+				buffers[i].allocRead(filepath);
+			}, {
+				buffers[i].numFrames = size;
+				buffers[i].alloc;
+			});
+			server.sync;
+			buffers[i].updateInfo;
+		}).play;
 	}
 
 	defaultQuant_ { |q|
@@ -3302,6 +3374,10 @@ Engine_Phonotype : CroneEngine {
 				pt.setFadeTime(msg[2].asInt, msg[3].asInt, newFadeTime);
 				cb.value;
 			}, "fade time: " ++ newFadeTime.asStringPrec(3));
+		});
+
+		this.addCommand("load_buffer", "iis", { arg msg;
+			pt.loadBuffer(msg[1].asInt, msg[2].asInt, msg[3].asString);
 		});
 
 		this.addCommand("quant", "iiii", { arg msg;
