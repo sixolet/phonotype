@@ -419,6 +419,36 @@ function keyboard.char(character)
   redraw()
 end
 
+function delete_word_left()
+  local index = word_index_left()
+  editing = editing:sub(1, index-1)..editing:sub(edit_col, #editing)
+  edit_col = index
+end
+
+function move_word_left()
+  edit_col = word_index_left()
+end
+
+function word_index_left()
+  local previous_index = 1
+  local index = 0
+  local end_index = 0
+
+  while(true)
+  do
+    index, end_index = editing:find("[%w%p]+", end_index+1)
+    if index == nil or index >= edit_col then
+      return previous_index
+    end
+    previous_index = index
+  end
+end
+
+function move_word_right()
+  local index = editing:find("[%w%p]%s+", edit_col)
+  edit_col = index == nil and #editing or index + 1
+end
+
 function edit_from_history(depth)
   if depth == 0 then
     editing = ""
@@ -452,11 +482,17 @@ function keyboard.code(key, value)
       if edit_col <= 1 then
         edit_col = 1
         return
+      elseif model:super() then
+        move_word_left()
+        return
       end
       edit_col = edit_col - 1
     elseif key == "RIGHT" then
       if editing:len() < edit_col then
         edit_col = editing:len() + 1
+      elseif model:super() then
+        move_word_right()
+        return
       else
         edit_col = edit_col + 1
       end
@@ -523,6 +559,14 @@ function keyboard.code(key, value)
     elseif key == "V" and model:super() then
       editing = clipboard
       model:enter()
+    elseif key == "W" and model:super() then
+      delete_word_left()
+    elseif key == "HOME" then
+      edit_col = 1
+    elseif key == "END" then
+      edit_col = #editing
+    else
+      print("what's '"..key.."'?")
     end
   end
   print("Now editing row:", edit_row, "col:", edit_col)
