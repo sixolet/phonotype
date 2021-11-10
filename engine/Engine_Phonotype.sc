@@ -1403,6 +1403,130 @@ PTVendoredPlayBufCF {
 
 }
 
+PTPhasorOp :PTOp {
+
+	var server, metro_bus;
+
+	// opts should be a list of some of \rate, \bpm,
+	*new { |name, server, metro_bus|
+		^super.newCopyArgs(name, 4, server, metro_bus);
+	}
+
+	instantiate { |args, resources|
+		var rate = args[1].instantiate;
+		var start = args[2].instantiate*server.sampleRate;
+		var end = args[3].instantiate*server.sampleRate;
+		if (metro_bus != nil, {
+			var secondsPerBeat = In.kr(metro_bus);
+			start = start*secondsPerBeat;
+			end = end*secondsPerBeat;
+		})
+		^Phasor.ar(args[0].instantiate, rate, start, end);
+	}
+
+	min { |args, resources|
+		^min(args[2].min*server.sampleRate, args[3].min*server.sampleRate);
+	}
+
+	max { |args, resources|
+		^max(args[2].max*server.sampleRate, args[3].max*server.sampleRate);
+	}
+
+	rate { |args|
+		^\audio;
+	}
+}
+
+PTBufWrOp : PTOp {
+	var buffers, loop, min, max;
+
+	*new { |name, buffers, loop, min= -1, max= 1|
+		^super.newCopyArgs(name, 3, buffers, loop, min, max);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant buffer number").throw;
+		});
+		if (args[0].min >= buffers.size, {
+			PTCheckError.new(name ++ " max buffer number is " ++ buffers.size).throw;
+		});
+	}
+
+	rate { |args|
+		^if ((args[2].rate == \audio) || (args[1].rate == \audio) || (args[1].max - args[1].min) > 1000, {\audio}, {\control});
+	}
+
+	instantiate { |args, resources|
+		var phase = args[1].instantiate;
+		var toRecord = PTScriptNet.maybeMakeStereo(args[2].instantiate);
+		case (
+			{phase.rate == \audio}, {
+				BufWr.ar(toRecord, 2, args[0].min, phase, loop);
+			},
+			{this.rate == \audio}, {
+				BufWr.ar(toRecord, 2, args[0].min, K2A.ar(phase), loop);
+			},
+			{true}, {
+				BufWr.kr(toRecord, 2, args[0].min, phase, loop);
+			}
+		);
+		toRecord;
+	}
+
+	min { |args, resources|
+		^min;
+	}
+
+	max { |args, resources|
+		^max;
+	}
+}
+
+PTBufRdOp : PTOp {
+	var buffers, loop, min, max;
+
+	*new { |name, buffers, loop, min= -1, max= 1|
+		^super.newCopyArgs(name, 2, buffers, loop, min, max);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant buffer number").throw;
+		});
+		if (args[0].min >= buffers.size, {
+			PTCheckError.new(name ++ " max buffer number is " ++ buffers.size).throw;
+		});
+	}
+
+	rate { |args|
+		^if ((args[1].rate == \audio) || (args[1].max - args[1].min) > 1000, {\audio}, {\control});
+	}
+
+	instantiate { |args, resources|
+		var phase = args[1].instantiate;
+		^case (
+			{phase.rate == \audio}, {
+				BufRd.ar(2, args[0].min, args[1].instantiate, loop);
+			},
+			{(args[1].max - args[1].min) > 1000}, {
+				BufRd.ar(2, args[0].min, K2A.ar(phase), loop);
+			},
+			{true}, {
+				BufRd.kr(2, args[0].min, args[1].instantiate, loop);
+			}
+		);
+	}
+
+	min { |args, resources|
+		^min;
+	}
+
+	max { |args, resources|
+		^max;
+	}
+}
+
 PTBufPlayOp :PTOp {
 	var opts, buffers, metro_bus, fade, loop, min, max;
 
@@ -3109,6 +3233,13 @@ PT {
 		ctx['V'] = PTNamedBusOp.new("V", \control, param_busses[21], 0, 1);
 
 		// Set up buffer operations
+		ctx['RD'] = PTBufRdOp.new("RD", buffers, 0);
+		ctx['RD.L'] = PTBufRdOp.new("RD.L", buffers, 1);
+		ctx['WR'] = PTBufWrOp.new("WR", buffers, 0);
+		ctx['WR.L'] = PTBufWrOp.new("WR.L", buffers, 1);
+		ctx['PHASOR'] = PTPhasorOp.new("PHASOR", server, nil);
+		ctx['PHASOR.B'] = PTPhasorOp.new("PHASOR", server, param_busses[16]);
+
 		ctx['PLAY'] = PTBufPlayOp.new("PLAY", [], buffers, param_busses[16]);
 		[\bpm -> "T", \beats -> "B", \rate -> "R", \octave -> "O"].do { |assc|
 			["PLAY", "LOOP"].do { |baseName, loop|
