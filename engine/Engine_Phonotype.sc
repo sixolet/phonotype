@@ -1335,12 +1335,80 @@ PTCrushOp : PTOp {
 	}
 }
 
+// from https://github.com/supercollider-quarks/wslib/blob/master/wslib-classes/Extensions/UGens/PlayBufCF.sc
+// This class by Wouter Snoei
+PTVendoredPlayBufCF {
+	// dual play buf which crosses from 1 to the other at trigger
+
+	*ar { arg numChannels, bufnum=0, rate=1.0, trigger=1.0, startPos=0.0, loop = 0.0,
+			lag = 0.1, n = 2; // alternative for safemode
+
+		var index, method = \ar, on;
+
+		switch ( trigger.rate,
+			 \audio, {
+				index = Stepper.ar( trigger, 0, 0, n-1 );
+			 },
+			 \control, {
+				index = Stepper.kr( trigger, 0, 0, n-1 );
+				method = \kr;
+			},
+			\demand, {
+				trigger = TDuty.ar( trigger ); // audio rate precision for demand ugens
+				index = Stepper.ar( trigger, 0, 0, n-1 );
+			},
+			{ ^PlayBuf.ar( numChannels, bufnum, rate, trigger, startPos, loop ); } // bypass
+		);
+
+		on = n.collect({ |i|
+			//on = (index >= i) * (index <= i); // more optimized way?
+			InRange.perform( method, index, i-0.5, i+0.5 );
+		});
+
+		switch ( rate.rate,
+			\demand,  {
+				rate = on.collect({ |on, i|
+					Demand.perform( method, on, 0, rate );
+				});
+			},
+			\control, {
+				rate = on.collect({ |on, i|
+					Gate.kr( rate, on ); // hold rate at crossfade
+				});
+			},
+			\audio, {
+				rate = on.collect({ |on, i|
+					Gate.ar( rate, on );
+				});
+			},
+			{
+				rate = rate.asCollection;
+			}
+		);
+
+		if( startPos.rate == \demand ) {
+			startPos = Demand.perform( method, trigger, 0, startPos )
+		};
+
+		lag = 1/lag.asArray.wrapExtend(2);
+
+		^Mix(
+			on.collect({ |on, i|
+				PlayBuf.ar( numChannels, bufnum, rate.wrapAt(i), on, startPos, loop )
+					* Slew.perform( method, on, lag[0], lag[1] ).sqrt
+			})
+		);
+
+	}
+
+}
+
 PTBufPlayOp :PTOp {
-	var opts, buffers, metro_bus, min, max;
+	var opts, buffers, metro_bus, fade, loop, min, max;
 
 	// opts should be a list of some of \rate, \bpm,
-	*new { |name, opts, buffers, metro_bus, min= -1, max= 1|
-		^super.newCopyArgs(name, opts.size + 2, opts, buffers, metro_bus, min, max);
+	*new { |name, opts, buffers, metro_bus, fade=false, loop=0.0, min= -1, max= 1|
+		^super.newCopyArgs(name, opts.size + 2, opts, buffers, metro_bus, fade, loop, min, max);
 	}
 
 	check { |args|
@@ -1355,14 +1423,55 @@ PTBufPlayOp :PTOp {
 	instantiate { |args, resources|
 		var n = args[0].min;
 		var rate = 1.0;
+		var cueMult = 1.0;
+		var cue = 0.0;
+		var xfTime = 0.01;
 		opts.do { |o, i|
 			switch(o,
+				\rate, {
+					rate = args[i+2].instantiate;
+				},
+				\octave, {
+					rate = 2.pow(args[i+2].instantiate);
+				},
+				\beats, {
+					var beatsTotal = args[i+2].instantiate;
+					var secondsTotal = BufDur.kr(n);
+					var beatsPerSecond = beatsTotal/secondsTotal;
+					rate = (In.kr(metro_bus)*(beatsPerSecond)).reciprocal;
+					cueMult = beatsPerSecond.reciprocal;
+				},
 				\bpm, {
-					rate = (In.kr(metro_bus)*(args[i+2].instantiate/60)).reciprocal;
+					var beatsPerSecond = args[i+2].instantiate/60;
+					rate = (In.kr(metro_bus)*(beatsPerSecond)).reciprocal;
+					cueMult = beatsPerSecond.reciprocal;
+				},
+				\cue, {
+					cue = cueMult * args[i+2].instantiate;
+				},
+				\crossfade, {
+					xfTime = args[i+2].instantiate;
 				}
 			);
 		};
-		^PlayBuf.ar(2, n, rate: rate, trigger: args[1].instantiate, doneAction: Done.none);
+		^if(fade, {
+			PTVendoredPlayBufCF.ar(2, n,
+				rate: BufRateScale.kr(n) * rate,
+				trigger: args[1].instantiate,
+				startPos: cue * BufSampleRate.kr(n),
+				doneAction: Done.none,
+				loop: loop,
+				lag: xfTime,
+			);
+		}, {
+			PlayBuf.ar(2, n,
+				rate: BufRateScale.kr(n) * rate,
+				trigger: args[1].instantiate,
+				startPos: cue * BufSampleRate.kr(n),
+				doneAction: Done.none,
+				loop: loop,
+			);
+		});
 	}
 
 	min { |args, resources|
@@ -3001,7 +3110,25 @@ PT {
 
 		// Set up buffer operations
 		ctx['PLAY'] = PTBufPlayOp.new("PLAY", [], buffers, param_busses[16]);
-		ctx['PLAY.B'] = PTBufPlayOp.new("PLAY.B", [\bpm], buffers, param_busses[16]);
+		[\bpm -> "T", \beats -> "B", \rate -> "R", \octave -> "O"].do { |assc|
+			["PLAY", "LOOP"].do { |baseName, loop|
+				var name = baseName ++ "." ++ assc.value;
+				var nameCue = name ++ "C";
+				var nameS = name ++ "S";
+				var nameCueS = nameCue ++ "S";
+				var nameX = name ++ "X";
+				var nameCueX = nameCue ++ "X";
+				ctx[name.asSymbol] = PTBufPlayOp.new(name, [assc.key], buffers, param_busses[16], fade: false, loop: loop);
+				ctx[nameCue.asSymbol] = PTBufPlayOp.new(name, [assc.key, \cue], buffers, param_busses[16], fade: false, loop: loop);
+				ctx[nameS.asSymbol] = PTBufPlayOp.new(name, [assc.key], buffers, param_busses[16], fade: true, loop: loop);
+				ctx[nameCueS.asSymbol] = PTBufPlayOp.new(name, [assc.key, \cue], buffers, param_busses[16], fade: true, loop: loop);
+				ctx[nameX.asSymbol] = PTBufPlayOp.new(name, [assc.key, \crossfade], buffers, param_busses[16], fade: true, loop: loop);
+				ctx[nameCueX.asSymbol] = PTBufPlayOp.new(name, [assc.key, \cue, \crossfade], buffers, param_busses[16], fade: true, loop: loop);
+
+			};
+		};
+
+		ctx['SR'] = PTConst('SR', server.sampleRate);
 
 		// Set up the note operations
 		param_busses[17].value = 440;
@@ -3190,6 +3317,7 @@ PT {
 			PTDbg << "Free busses\n";
 			audio_busses.do { |b| b.free };
 			control_busses.do { |b| b.free };
+			buffers.do { |b| b.free};
 			out_proxy.clear;
 			callback.value;
 			// Removed because I think norns calls
