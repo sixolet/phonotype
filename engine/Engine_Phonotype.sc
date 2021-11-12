@@ -1258,6 +1258,98 @@ PTAbsOp : PTOp {
 	}
 }
 
+PTCountOp : PTOp {
+	// trig, reset
+	*new {
+		^super.newCopyArgs("COUNT", 2);
+	}
+
+	max { |args|
+		^10;
+	}
+
+	min {
+		^0;
+	}
+
+	instantiate { |args, resources|
+		^this.i(PulseCount, args);
+	}
+}
+
+PTStepOp : PTOp {
+	*new {
+		// trig, reset, min, max
+		^super.newCopyArgs("STEP", 4);
+	}
+
+	max { |args|
+		^args[3].max;
+	}
+
+	min { |args|
+		^args[2].min;
+	}
+
+	instantiate { |args, resources|
+		var mn = args[2].instantiate;
+		var mx = args[3].instantiate;
+		var normal = (mn < mx);
+		^this.instantiateHelper(Stepper, this.rate, [
+			args[0].instantiate,
+			args[1].instantiate,
+			Select.kr(normal, mn, mx),
+			Select.kr(normal, mx, mn),
+			(mx-mn).sign]);
+	}
+}
+
+PTLeapOp : PTOp {
+	*new {
+		// trig, reset, min, max, interval
+		^super.newCopyArgs("LEAP", 5);
+	}
+
+	max { |args|
+		^args[3].max;
+	}
+
+	min { |args|
+		^args[2].min;
+	}
+
+	instantiate { |args, resources|
+		var mn = args[2].instantiate;
+		var mx = args[3].instantiate;
+		var normal = (mn < mx);
+		^this.instantiateHelper(Stepper, this.rate, [
+			args[0].instantiate,
+			args[1].instantiate,
+			Select.kr(normal, mn, mx),
+			Select.kr(normal, mx, mn),
+			(mx-mn).sign * args[4].instantiate]);
+	}
+}
+
+PTSignOp : PTOp {
+	*new {
+		^super.newCopyArgs("SIGN", 1);
+	}
+
+	max { |args|
+		^1;
+	}
+
+	min {
+		^-1;
+	}
+
+	instantiate { |args, resources|
+		^args[0].instantiate.sign;
+	}
+
+}
+
 PTInvOp : PTOp {
 	*new {
 		^super.newCopyArgs("INV", 1);
@@ -1454,7 +1546,7 @@ PTBufWrOp : PTOp {
 	}
 
 	rate { |args|
-		^if ((args[2].rate == \audio) || (args[1].rate == \audio) || (args[1].max - args[1].min) > 1000, {\audio}, {\control});
+		^if ((args[2].rate == \audio) || (args[1].rate == \audio) || ((args[1].max - args[1].min) > 1000), {\audio}, {\control});
 	}
 
 	instantiate { |args, resources|
@@ -1483,6 +1575,29 @@ PTBufWrOp : PTOp {
 	}
 }
 
+PTBufDurOp : PTOp {
+	*new {
+		^super.newCopyArgs("LEN", 1);
+	}
+
+	check { |args|
+		if (args[0].isConstant.not, {
+			PTCheckError.new(name ++ " needs constant buffer number").throw;
+		});
+	}
+
+	rate { |args| ^\control}
+
+	instantiate { |args, resources|
+		^BufDur.kr(args[0].min);
+	}
+
+	min {^0}
+
+	max {^60}
+
+}
+
 PTBufRdOp : PTOp {
 	var buffers, loop, min, max;
 
@@ -1500,20 +1615,21 @@ PTBufRdOp : PTOp {
 	}
 
 	rate { |args|
-		^if ((args[1].rate == \audio) || (args[1].max - args[1].min) > 1000, {\audio}, {\control});
+		^if ((args[1].rate == \audio) || ((args[1].max - args[1].min) > 1000), {\audio}, {\control});
 	}
 
 	instantiate { |args, resources|
 		var phase = args[1].instantiate;
+		if (phase.size > 0, {phase = phase[0]});
 		^case (
 			{phase.rate == \audio}, {
-				BufRd.ar(2, args[0].min, args[1].instantiate, loop);
+				BufRd.ar(2, args[0].min, phase, loop);
 			},
 			{(args[1].max - args[1].min) > 1000}, {
 				BufRd.ar(2, args[0].min, K2A.ar(phase), loop);
 			},
 			{true}, {
-				BufRd.kr(2, args[0].min, args[1].instantiate, loop);
+				BufRd.kr(2, args[0].min, phase, loop);
 			}
 		);
 	}
@@ -1563,12 +1679,12 @@ PTBufPlayOp :PTOp {
 					var secondsTotal = BufDur.kr(n);
 					var beatsPerSecond = beatsTotal/secondsTotal;
 					rate = (In.kr(metro_bus)*(beatsPerSecond)).reciprocal;
-					cueMult = beatsPerSecond.reciprocal;
+					cueMult = beatsPerSecond.reciprocal.abs;
 				},
 				\bpm, {
 					var beatsPerSecond = args[i+2].instantiate/60;
 					rate = (In.kr(metro_bus)*(beatsPerSecond)).reciprocal;
-					cueMult = beatsPerSecond.reciprocal;
+					cueMult = beatsPerSecond.reciprocal.abs;
 				},
 				\cue, {
 					cue = cueMult * args[i+2].instantiate;
@@ -1880,6 +1996,9 @@ PTParser {
 			"SEQ3" -> PTSequenceOp.new("SEQ3", 5),
 			"SEQ4" -> PTSequenceOp.new("SEQ4", 6),
 			"SEQ5" -> PTSequenceOp.new("SEQ5", 7),
+			"STEP" -> PTStepOp.new,
+			"LEAP" -> PTLeapOp.new,
+			"COUNT" -> PTCountOp.new,
 
 			"CDIV" -> PTFilterOp.new("CDIV", 2, PulseDivider),
 			"DUR" -> PT01DelegatedOp("DUR", 2, Trig1),
@@ -1890,6 +2009,7 @@ PTParser {
 			"DEL.A" -> PTAllPassOp.new("DEL.A", AllpassN, AllpassL),
 
 			"ABS" -> PTAbsOp.new,
+			"SIGN" -> PTSignOp.new,
 			"INV" -> PTInvOp.new,
 			"WRAP" -> PTWrapOp.new,
 			"WRP" -> PTWrapOp.new,
@@ -3234,6 +3354,7 @@ PT {
 
 		// Set up buffer operations
 		ctx['RD'] = PTBufRdOp.new("RD", buffers, 0);
+		ctx['LEN'] = PTBufDurOp.new;
 		ctx['RD.L'] = PTBufRdOp.new("RD.L", buffers, 1);
 		ctx['WR'] = PTBufWrOp.new("WR", buffers, 0);
 		ctx['WR.L'] = PTBufWrOp.new("WR.L", buffers, 1);
@@ -3315,7 +3436,7 @@ PT {
 		this.initBeats(ctx);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
-			out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh };
+			out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh / 2 };
 		});
 		description = PTDescription.new(6);
 		scripts = Array.new(numScripts+1);
@@ -3549,7 +3670,7 @@ PT {
 Engine_Phonotype : CroneEngine {
 	classvar luaOscPort = 10111;
 
-	var pt; // a Phonotype
+	var <pt; // a Phonotype
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
 	}
