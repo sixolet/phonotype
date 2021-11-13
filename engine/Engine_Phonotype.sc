@@ -1,5 +1,5 @@
 PTDbg : Post {
-	classvar <>debug = false;
+	classvar <>debug = true;
 	classvar <>slow = false;
 	classvar <>complexity = 0;
 	classvar <>f = nil;
@@ -98,9 +98,9 @@ PTOp {
 	}
 
 	// commit runs as part of a Routine; it can yield.
-	commit { |args, resources|
+	commit { |args, resources, group|
 		args.do { |a|
-			a.commit;
+			a.commit(group);
 		}
 	}
 
@@ -149,8 +149,8 @@ PTNode {
 		^op.max(args, resources);
 	}
 
-	commit {
-		op.commit(args, resources);
+	commit { |group|
+		op.commit(args, resources, group);
 	}
 
 	isConstant {
@@ -1698,7 +1698,7 @@ PTParser {
 
 	parseHelper {|tokens, pos, context|
 		var newNode;
-		PTDbg << "parse helper " << counter << " pos " << pos << "\n";
+		// PTDbg << "parse helper " << counter << " pos " << pos << "\n";
 		counter = counter + 1;
 		if (PTDbg.slow && (counter > 6000), {
 			Error.new("Something blew up in the parser").throw;
@@ -1815,7 +1815,7 @@ PTLine {
 }
 
 PTScriptNet {
-	var server, <parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus;
+	var server, <parser, <order, <newOrder, <dict, <id, <script, <args, <argProxies, <callSite, <jBus, <kBus, <parentGroup;
 
 	*new { |server, parser, lines, args=nil, script=nil, callSite|
 		var i;
@@ -1861,10 +1861,14 @@ PTScriptNet {
 				p.set(\in, callSite.net.prevEntryOf(callSite.id).proxy);
 				p;
 			}, {
-				NodeProxy.new(
+				var newN = NodeProxy.new(
 					server,
 					rate: if(a != nil, {a.rate}, {\control}),
-					numChannels: if(a != nil, {2}, {1}))
+					numChannels: if(a != nil, {2}, {1}));
+				if (parentGroup != nil, {
+					newN.parentGroup = parentGroup
+				});
+				newN;
 			});
 			if (
 				a != nil,
@@ -1901,6 +1905,9 @@ PTScriptNet {
 
 	newProxy { |rate=nil, fadeTime, quant|
 		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
+		if (parentGroup != nil, {
+			ret.parentGroup = parentGroup;
+		});
 		ret.fadeTime = fadeTime;
 		if (quant != nil, {
 			ret.quant = Quant.new(quant, -0.01);
@@ -2130,8 +2137,11 @@ PTScriptNet {
 		newOrder = nil;
 	}
 
-	commit { |cb|
+	commit { |cb, group|
 		var outEntry = dict[newOrder.last];
+		if (group != nil, {
+			parentGroup = group;
+		});
 		if (argProxies == nil, {
 			PTDbg << "INITIALIZING ARG PROXIES\n";
 			this.initArgProxies;
@@ -2520,6 +2530,75 @@ PTEveryOp : PTOp {
 	}
 }
 
+PTPauseOp : PTOp {
+	var server;
+
+	*new { |server|
+		^super.newCopyArgs("PAUSE", 2, server, nil);
+	}
+
+	min { |args|
+		^args[1].min;
+	}
+
+	max { |args|
+		^args[1].max;
+	}
+
+	rate { |args|
+		^args[1].rate;
+	}
+
+	commit { |args, resources, group|
+		var myGroup, synthProxy, gateProxy, placeOfCall;
+		placeOfCall = resources[3].site;
+		PTDbg << "Committing pause called from " << placeOfCall.net.id << " line " << placeOfCall.id << "\n";
+
+		myGroup = Group.new;
+		synthProxy = placeOfCall.net.newProxy(rate: args[1].rate, fadeTime: 0, quant: 0);
+		gateProxy = placeOfCall.net.newProxy(rate: \control, fadeTime: 0, quant: 0);
+		resources[0] = myGroup;
+		resources[1] = synthProxy;
+		resources[2] = gateProxy;
+		NodeWatcher.register(myGroup, assumePlaying: true);
+		server.sync;
+		synthProxy.parentGroup = myGroup;
+		synthProxy.set(\in, placeOfCall.net.prevEntryOf(placeOfCall.id).proxy);
+		gateProxy.set(\in, placeOfCall.net.prevEntryOf(placeOfCall.id).proxy);
+		gateProxy.set(\side, synthProxy);
+		args[0].commit(group);
+		args[1].commit(myGroup);
+		synthProxy.source = {
+			PTScriptNet.maybeMakeStereo(args[1].instantiate);
+		};
+		gateProxy.source = {
+			var res, detect, gate;
+			res = \side.kr([0, 0]);
+			gate = args[0].instantiate;
+			if (gate.size > 0, {
+				gate = Mix.kr(gate);
+			});
+			detect = Mix.kr(res.abs);
+			Pause.kr(gate + DetectSilence.kr(detect, doneAction: Done.none).not, myGroup.nodeID);
+			detect;
+		};
+
+	}
+
+	alloc { |args, callSite|
+		// group, synthproxy, gateproxy, callSite
+		^[nil, nil, nil, (site: callSite, free: {})];
+	}
+
+	instantiate { |args, resources|
+		^if(this.rate(args) == \control, {
+			resources[1].kr;
+		}, {
+			resources[1].ar;
+		});
+	}
+}
+
 PTScriptOp : PTOp {
 	var server, parser, script;
 
@@ -2557,14 +2636,14 @@ PTScriptOp : PTOp {
 		^[net];
 	}
 
-	commit { |args, resources|
+	commit { |args, resources, group|
 		var net = resources[0];
 		PTDbg << "Committing args " << args << "\n";
 		args.do { |a|
-			a.commit;
+			a.commit(group);
 		};
 		PTDbg << "Committing net from op " << net.id << "\n";
-		net.commit.do { |w| w.yield };
+		net.commit(group).do { |w| w.yield };
 	}
 
 	instantiate { |args, resources|
@@ -2996,6 +3075,7 @@ PT {
 		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
+		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
 			out_proxy.source = { (param_busses[18].kr * \in.ar([0, 0])).tanh };
