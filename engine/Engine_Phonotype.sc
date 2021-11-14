@@ -93,6 +93,10 @@ PTOp {
 		^ret;
 	}
 
+	set { |key, value, args, resources|
+		args.do { |x| x.set(key, value) };
+	}
+
 	alloc { |args, callSite|
 		^nil;
 	}
@@ -151,6 +155,10 @@ PTNode {
 
 	commit { |group|
 		op.commit(args, resources, group);
+	}
+
+	set { |key, value|
+		op.set(key, value, args, resources);
 	}
 
 	isConstant {
@@ -1779,6 +1787,7 @@ PTLine {
 				// If unconnected, and we need a connection, connect
 				PTDbg << "Connecting for the first time\n";
 				proxy.set(\in, other.proxy);
+				(newNode ? node).set(\in, other.proxy);
 				connected = other.id;
 				connectRate = other.proxy.rate;
 			},
@@ -1798,7 +1807,11 @@ PTLine {
 				});
 				timeToFree = this.timeToFree;
 				PTDbg << "Resheduling free for " << timeToFree << "\n";
-				deferrals.add( {proxy.xset(\in, xsetToThis)});
+				deferrals.add( {
+					proxy.xset(\in, xsetToThis);
+					// TODO make this crossfade
+					(newNode ? node).set(\in, xsetToThis);
+				});
 			},
 			{PTDbg << "No connection necessary\n"}
 		);
@@ -2549,6 +2562,14 @@ PTPauseOp : PTOp {
 		^args[1].rate;
 	}
 
+	set { |key, value, args, resources|
+		var net = resources[0];
+		super.set(key, value, args, resources);
+		resources[1..2].do { |p|
+			p.set(key, value);
+		};
+	}
+
 	commit { |args, resources, group|
 		var myGroup, synthProxy, gateProxy, placeOfCall;
 		placeOfCall = resources[3].site;
@@ -2613,6 +2634,14 @@ PTScriptOp : PTOp {
 			var net = resources[0];
 			"Script: " ++ net.id;
 		});
+	}
+
+	set { |key, value, args, resources|
+		var net = resources[0];
+		super.set(key, value, args, resources);
+		net.argProxies.do { |p|
+			p.set(key, value);
+		};
 	}
 
 	min { |args, resources|
