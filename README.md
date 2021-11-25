@@ -6,6 +6,7 @@ Useful for:
 
 * Custom midi (mono, for now) synths
 * Effects chains of your dreams
+* Fluid live-coding, changing the control flow as you go
 * An entire dang modular in this box yo
 
 To use PHONOTYPE:
@@ -170,6 +171,112 @@ Uses cubic interpolation.
 `PINK` - Pink noise
 
 Noise is good dontcha know.
+
+### Buffers and Samples
+
+There are 16 stereo buffers, numbered 0 through 15. They're accessible from the
+"buffers" submenu in params - by default they are blank, but you can choose a
+file to initialize a buffer to (on the fly, even, if you wish) in the params
+menu.
+
+There are two main buffer ops: `PLAY` and `LOOP`, and they differ only in
+whether they loop automatically to the cue point or beginning at the end of the
+buffer. Each of these has combinatorially many suffixes. I will list the
+suffixes for `PLAY`; all the same ones exist for `LOOP`. In "loop" mode, the
+trigger acts as a reset to the beginning or the cue point.
+
+`PLAY <bufnum> <trig>` - Play the buffer every time the trigger fires.
+
+#### Rate variants
+
+`PLAY.B <bufnum> <trig> <beats>` - Play the buffer, beat-synced.
+
+Assuming the buffer has the given number of beats, adjusts speed to match the
+current tempo of PHONOTYPE.
+
+`PLAY.T <bufnum> <trig> <bpm>` - Play the buffer, tempo-synced.
+
+Assuming the buffer has the given BPM, adjusts speed to match the current tempo
+of PHONOTYPE.
+
+`PLAY.R <bufnum> <trig> <rate>` - Play the buffer, variable rate.
+
+Play the buffer at the given rate multiple.
+
+`PLAY.O <bufnum> <trig> <octave>` - Play the buffer, variable octave
+
+Play the buffer at the given octave multiple: 0 is normal speed, -1 is half
+speed, 2 is 4x speed, etc.
+
+#### Rate & Cue variants
+
+`PLAY.BC <bufnum> <trig> <beats> <cue>` - Play the buffer, beat-synced, with cue.
+
+Assuming the buffer has the given number of beats, adjusts speed to match the
+current tempo of PHONOTYPE. When a trigger is recieved, starts playing from the
+cue. The cue is a number of *beats* into the buffer.
+
+`PLAY.TC <bufnum> <trig> <bpm> <cue>` - Play the buffer, tempo-synced, with cue.
+
+Assuming the buffer has the given BPM, adjusts speed to match the current tempo
+of PHONOTYPE. When a trigger is recieved, starts playing from the
+cue. The cue is a number of *beats* into the buffer.
+
+`PLAY.RC <bufnum> <trig> <rate> <cue>` - Play the buffer, variable rate, with cue.
+
+Play the buffer at the given rate multiple. When a trigger is recieved, starts
+playing from the cue. The cue is a number of *seconds* into the buffer.
+
+`PLAY.OC <bufnum> <trig> <octave> <cue>` - Play the buffer, variable octave, with cue
+
+Play the buffer at the given octave multiple: 0 is normal speed, -1 is half
+speed, 2 is 4x speed, etc. When a trigger is recieved, starts playing from the
+cue. The cue is a number of *seconds* into the buffer.
+
+#### Smoothness variants
+
+The same smoothness variants exist for all rate and cue variants. I told you
+this stuff was combinatorial.
+
+`PLAY.BS <bufnum> <trig> <beats>` - Play the buffer, beat-synced, smoothly.
+
+Introduces a short crossfade when trigger is recieved to avoid clicks.
+
+
+`PLAY.BX <bufnum> <trig> <beats> <fade>` - Play the buffer, beat-synced, adjustable crossfade.
+
+Introduces a user-specified crossfade when trigger is recieved to avoid clicks
+or transition slowly. The fade time parameter always comes after the cue
+parameter if present.
+
+#### Utilities and phasey phasors
+
+`SR` - The sample rate.
+
+A constant.
+
+`RD <bufnum> <phasor>` - Read the buffer with the phasor.
+
+The phasor should be in *samples*, thus the `SR` constant to multiply by if you like.
+
+`WR <bufnum> <phasor> <signal>` - Write to the buffer with the phasor.
+
+Again, phasor in *samples*. YMMV with a phasor with a slope faster than 1.
+
+`PHASOR <trig> <start> <end>` - Make a phasor
+
+Produces a sample-scale ramp from the start (in seconds) to the end (in
+seconds), looping. The trigger resets it to the start.
+
+`PHASOR <trig> <start> <end>` - Make a phasor specifying args in beats
+
+Produces a sample-scale ramp from the start (in beats) to the end (in
+beats), looping. The trigger resets it to the start.
+
+`LEN <bufnum>` - Length of buffer
+
+Outputs the length of a buffer in seconds. May change if the buffer is loaded to
+a different sample from the params menu.
 
 ### PRE ops
 

@@ -265,6 +265,15 @@ function script_num_rep(n)
   end
 end
 
+function buf_size_format(param)
+  local i = param:get()
+  if i < 4800 then
+    return string.format("%i", i)
+  else
+    return string.format("%.2f s", i/48000)
+  end
+end
+
 function init()
   params:add_file("scene", "scene")
   params:set_action("scene", maybe_load_scene)
@@ -290,6 +299,40 @@ function init()
       string.format("param %i", i),
       param_spec)
     params:set_action(param_id, function(x) engine.set_param(i, x) end)
+  end
+  
+  params:add_group("buffers", 48)
+  local buf_size_spec = controlspec.def{
+    min=64,
+    max=64*48000,
+    warp='exp',
+    step=256,
+    default=8*48000,
+    quantum=0.0078125,
+    wrap=false,
+    units='samples'
+  }
+  local source_options = {"empty", "file"}
+  for i=0,15,1 do
+    local type_id = string.format("buftype%i", i)
+    local file_id = string.format("buffile%i", i)
+    local size_id = string.format("bufsize%i", i)
+    params:add_option(type_id, string.format("source %i", i), source_options, 1)
+    params:add_control(size_id, string.format("size %i", i), buf_size_spec, buf_size_format)
+    params:add_file(file_id, string.format("file %i", i))
+    params:hide(file_id)
+    params:set_action(size_id, function(x) if params:visible(size_id) then engine.load_buffer(i, x, "") end end)
+    params:set_action(file_id, function(x) if params:visible(file_id) and x ~= "" and x ~= "-" then engine.load_buffer(i, 0, x) end end)
+    params:set_action(type_id, function (x)
+      if source_options[x] == "empty" then
+        params:show(size_id)
+        params:hide(file_id)
+      elseif source_options[x] == "file" then
+        params:show(file_id)
+        params:hide(size_id)
+      end
+      _menu.rebuild_params()
+    end)
   end
   
   midi_device = {} -- container for connected midi devices
