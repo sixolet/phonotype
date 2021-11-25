@@ -72,7 +72,7 @@ PTOp {
 	}
 
 	stringWithArgsResources { |args, resources|
-		^this.asString;
+		^name;
 	}
 
 	check { |args| }
@@ -772,6 +772,58 @@ PTModOp : PTOp {
 
 	max { |args, resources|
 		^args[1].max;
+	}
+}
+
+PTPolyArgCaptureOp : PTOp {
+	var orgIdx, minVal, maxVal, index;
+
+	*new { |name, orgIdx, minVal = -10, maxVal = 10, index=0|
+		^super.newCopyArgs(name, 0, orgIdx, minVal, maxVal, index);
+	}
+
+	rate { |args, resources|
+		^\control;
+	}
+
+	min { |args, resources|
+		^minVal;
+	}
+
+	max { |args, resources|
+		^maxVal;
+	}
+
+	instantiate { |args, resources|
+		var ret;
+		var org = \organize.kr([0, 440, 0, 0]);
+		ret = Latch.kr(Impulse.kr(0) + org[orgIdx.asInteger], BinaryOpUGen('==', org[3], index));
+		^ret;
+	}
+}
+
+PTPolyTrigOp : PTOp {
+	var index;
+
+	*new { |name, index=0|
+		^super.newCopyArgs(name, 0, index);
+	}
+
+	rate { |args, resources|
+		^\control;
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+		var org = \organize.kr([0, 440, 0, 0]);
+		^DelayN.kr(org[0] * BinaryOpUGen('==', org[3], index), 0.002, 0.002);
 	}
 }
 
@@ -1652,13 +1704,70 @@ PTParser {
 		]));
 	}
 
+	parseStrum {|poly, preTokens, tokens, ctx|
+		var end;
+		var trig = this.parseHelper(preTokens, 1, ctx);
+		var freq = this.parseHelper(preTokens, trig.key, ctx);
+		var vel = this.parseHelper(preTokens, freq.key, ctx);
+		var results = List.newFrom([trig, freq, vel].collect(_.value));
+		var newNode;
+		var strum = ctx[preTokens[0].asSymbol];
+		if (vel.key < preTokens.size, {
+			PTParseError.new("Expected :, found " ++ preTokens[vel.key]).throw;
+		});
+		poly.do { |i|
+			var subctx = (
+				I: PTConst.new("I", i),
+				G: PTPolyTrigOp.new("G", i),
+				F: PTPolyArgCaptureOp.new("F", 1, 20, 20000, i),
+				V: PTPolyArgCaptureOp.new("V", 2, 0, 1, i),
+			);
+			var elt;
+			subctx.parent = ctx;
+			elt = this.parseHelper(tokens, 0, subctx);
+			end = elt.key;
+			results.add(elt.value);
+		};
+		newNode = PTNode.new(
+			strum,
+			results,
+			ctx['callSite']);
+		^(end -> newNode);
+	}
+
+	parseMix { |preTokens, tokens, ctx|
+		var end;
+		var low = this.parseHelper(preTokens, 1, ctx);
+		var high = this.parseHelper(preTokens, low.key, ctx);
+		var results = List.new;
+		var newNode;
+		PTDbg << "low " << low << " high " << high << "\n";
+		if (low.value.isConstant.not || high.value.isConstant.not || (high.value.min <= low.value.min), {
+			PTParseError.new("L.MIX takes two constants").throw;
+		});
+		if (high.key < preTokens.size, {
+			PTParseError.new("Expected :, found " ++ preTokens[high.key]).throw;
+		});
+		(1 + high.value.min - low.value.min).do { |x|
+			var i = x + low.value.min;
+			var subctx = (I: PTConst.new("I", i));
+			var elt;
+			subctx.parent = ctx;
+			elt = this.parseHelper(tokens, 0, subctx);
+			end = elt.key;
+			results.add(elt.value);
+		};
+		newNode = PTNode.new(PTMixOp.new("L.MIX", results.size), results, ctx['callSite']);
+		^(end -> newNode);
+	}
+
 	parse { |str, context=nil|
 		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
 		var sides = s.split($:);
 		var preTokens, a, end, tokens;
 		counter = counter + 1;
-		PTDbg << "parse " << counter << "\n";
+		PTDbg << "parse " << str << "\n";
 		if (sides.size == 1, {
 			tokens = sides[0].split($ );
 			a = this.parseHelper(tokens, 0, ctx);
@@ -1668,33 +1777,21 @@ PTParser {
 			preTokens = sides[0].split($ );
 			case
 			{(preTokens[0] == "L.MIX") || (preTokens[0] == "L.M")} {
-				var low = this.parseHelper(preTokens, 1, ctx);
-				var high = this.parseHelper(preTokens, low.key, ctx);
-				var results = List.new;
-				var newNode;
-				PTDbg << "low " << low << " high " << high << "\n";
-				if (low.value.isConstant.not || high.value.isConstant.not || (high.value.min <= low.value.min), {
-					PTParseError.new("L.MIX takes two constants").throw;
-				});
-				if (high.key < preTokens.size, {
-					PTParseError.new("Expected :, found " ++ preTokens[high.key]).throw;
-				});
-				(1 + high.value.min - low.value.min).do { |x|
-					var i = x + low.value.min;
-					var subctx = (I: PTConst.new("I", i));
-					var elt;
-					subctx.parent = ctx;
-					elt = this.parseHelper(tokens, 0, subctx);
-					end = elt.key;
-					results.add(elt.value);
-				};
-				newNode = PTNode.new(PTMixOp.new("L.MIX", results.size), results, ctx['callSite']);
-				a = (end -> newNode);
+				a = this.parseMix(preTokens, tokens, ctx);
+				end = a.key;
+			}
+			{preTokens[0].beginsWith("STRUM") && ctx.includesKey(preTokens[0].asSymbol)} {
+				var strumStr = preTokens[0];
+				var poly = strumStr.split($.)[1].asInt;
+				Post << "BLOOP\n";
+				a = this.parseStrum(poly, preTokens, tokens, ctx);
+				end = a.key;
 			}
 			{true} {
 				PTParseError.new("Unknown PRE: " ++ preTokens[0]).throw;
 			};
 		});
+		Post << "WHEEEEEE\n";
 		while({end < tokens.size}, {
 			if (tokens[end] != "", {
 				PTParseError.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
@@ -1916,8 +2013,8 @@ PTScriptNet {
 		^ret;
 	}
 
-	newProxy { |rate=nil, fadeTime, quant|
-		var ret = NodeProxy.new(server, rate: rate, numChannels: 2);
+	newProxy { |rate=nil, fadeTime, quant, numChannels = 2|
+		var ret = NodeProxy.new(server, rate: rate, numChannels: numChannels);
 		if (parentGroup != nil, {
 			ret.parentGroup = parentGroup;
 		});
@@ -2543,11 +2640,138 @@ PTEveryOp : PTOp {
 	}
 }
 
+PTListFreer : PTOp {
+	var <>value;
+
+	free {
+		if (value != nil, {
+			value.do(_.free);
+		});
+	}
+}
+
+PTStrumOp : PTOp {
+	var server, poly;
+
+	*new { |server, poly|
+		^super.newCopyArgs("STRUM", poly + 3, server, poly);
+	}
+
+	min { |args|
+		^args[3..].collect(_.min).sum;
+	}
+
+	max { |args|
+		^args[3..].collect(_.max).sum;
+	}
+
+	rate { |args|
+		^\audio;
+	}
+
+	set { |key, value, args, resources|
+		var synthProxies = resources[1].value;
+		super.set(key, value, args, resources);
+		synthProxies.do { |p|
+			p.set(key, value);
+		};
+	}
+
+	alloc { |args, callSite|
+		// groups, synthproxies, gateproxy, callSite
+		// 0       1             2          3
+		^[PTListFreer.new, PTListFreer.new, nil, (site: callSite, free: {})];
+	}
+
+	commit { |args, resources, group|
+		var myGroups, synthProxies, gateProxy, placeOfCall, prevProxy;
+		var trig = args[0];
+		var freq = args[1];
+		var velocity = args[2];
+		var bodies = args[3..];
+
+		placeOfCall = resources[3].site;
+
+		// Initialize groups
+		myGroups = poly.collect({Group.new});
+		resources[0].value = myGroups;
+		myGroups.do{|x| NodeWatcher.register(x, assumePlaying: true)};
+
+		// Initialize synth proxies
+		synthProxies = poly.collect({placeOfCall.net.newProxy(rate: \audio, fadeTime: 0, quant: 0)});
+		resources[1].value = synthProxies;
+
+		// Initialize gate proxy.
+		gateProxy = placeOfCall.net.newProxy(rate: \control, fadeTime: 0, quant: 0, numChannels: 4);
+		resources[2] = gateProxy;
+
+		// plumb input.
+		prevProxy = placeOfCall.net.prevEntryOf(placeOfCall.id).proxy;
+		gateProxy.set(\in, prevProxy);
+
+		// Commit the nodes for the outer parameters
+		trig.commit(group);
+		freq.commit(group);
+		velocity.commit(group);
+
+		// Match up bodies with voices, commit them
+		PTDbg << "Making synths\n";
+		synthProxies.do { |x, i|
+			var body = bodies[i];
+			x.parentGroup = myGroups[i];
+			x.set(\in, prevProxy);
+			x.set(\organize, gateProxy);
+			gateProxy.set(("voice" ++ i).asSymbol, x);
+			body.commit(myGroups[i]);
+			x.source = {
+				var inst = body.instantiate;
+				PTScriptNet.maybeMakeStereo(inst);
+			};
+		};
+
+		// Make the gate proxy.
+		PTDbg << "Making gate\n";
+		gateProxy.source = {
+			var res, detect, t, frq, vel, count;
+
+			t = trig.instantiate;
+			if (t.size > 0, {
+				t = Mix.kr(t);
+			});
+			frq = freq.instantiate;
+			if (frq.size > 0, {
+				frq = frq[0];
+			});
+			vel = velocity.instantiate;
+			if (vel.size > 0, {
+				vel = Mix.kr(vel)/vel.size;
+			});
+			PTDbg << "Stepper\n";
+			count = Stepper.kr(t, min: 0, max: poly - 1);
+			PTDbg << "Voices\n";
+
+			poly.do { |i|
+				var res = ("voice" ++ i).asSymbol.ar([0,0]);
+				var imp = Impulse.kr(0);
+				detect = Mix.kr(A2K.kr(res).abs);
+				Pause.kr(imp + BinaryOpUGen('==', count, i) + DetectSilence.kr(imp + detect, doneAction: Done.none).not, myGroups[i].nodeID);
+			};
+			[t, frq, vel, count];
+		};
+		PTDbg << "Gate is set\n";
+
+	}
+
+	instantiate { |args, resources|
+		^Mix.ar(resources[1].value);
+	}
+}
+
 PTPauseOp : PTOp {
 	var server;
 
 	*new { |server|
-		^super.newCopyArgs("PAUSE", 2, server, nil);
+		^super.newCopyArgs("PAUSE", 2, server);
 	}
 
 	min { |args|
@@ -2563,7 +2787,6 @@ PTPauseOp : PTOp {
 	}
 
 	set { |key, value, args, resources|
-		var net = resources[0];
 		super.set(key, value, args, resources);
 		resources[1..2].do { |p|
 			p.set(key, value);
@@ -3099,11 +3322,16 @@ PT {
 		}
 	}
 
+	initPoly { |ctx|
+		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
+	}
+
 	init {
 		this.reset;
 		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
+		this.initPoly(ctx);
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
