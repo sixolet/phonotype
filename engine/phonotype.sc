@@ -357,7 +357,6 @@ PTParser {
 			{preTokens[0].beginsWith("STRUM") && ctx.includesKey(preTokens[0].asSymbol)} {
 				var strumStr = preTokens[0];
 				var poly = strumStr.split($.)[1].asInt;
-				Post << "BLOOP\n";
 				a = this.parseStrum(poly, preTokens, tokens, ctx);
 				end = a.key;
 			}
@@ -365,7 +364,6 @@ PTParser {
 				PTParseError.new("Unknown PRE: " ++ preTokens[0]).throw;
 			};
 		});
-		Post << "WHEEEEEE\n";
 		while({end < tokens.size}, {
 			if (tokens[end] != "", {
 				PTParseError.new("Unexpected " ++ tokens[end] ++ "; expected end").throw;
@@ -1232,7 +1230,7 @@ PTScript {
 			err.reportError;
 			toCommit.do { |p|
 				if (p == nil, {
-					Post << "Thing to commit is nil?\n"
+					PTDbg << "Thing to commit is nil?\n"
 				}, {
 					PTDbg << "aborting\n";
 					p.abort;
