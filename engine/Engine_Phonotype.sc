@@ -101,6 +101,10 @@ Engine_Phonotype : CroneEngine {
 			PTVoiceAllocator.deliverNoteOff(msg[1].asInt, msg[2].asInt, msg[3].asFloat);
 		});
 
+		this.addCommand("note_bend", "iiff", { arg msg;
+			PTVoiceAllocator.deliverNoteBend(msg[1].asInt, msg[2].asInt, msg[3].asFloat, msg[4].asFloat);
+		});
+
 		this.addCommand("quant", "iiii", { arg msg;
 			var prevQuant = pt.getQuant(msg[2].asInt, msg[3].asInt);
 			var prevQuantIndex = if(prevQuant < 1, {((-1 / prevQuant) + 2).round}, {prevQuant.round});

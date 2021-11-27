@@ -35,6 +35,16 @@ PTVoiceAllocator {
 		};
 	}
 
+	*deliverNoteBend { |channel, note, freq, bendSteps|
+		channel = channel.asInteger;
+		note = note.asInteger;
+		if (registry.includesKey(channel)) {
+			registry[channel].do { |a|
+				a.noteBend(note, freq, bendSteps);
+			};
+		};
+	}
+
 	*deliverNoteOff { |channel, note, freq|
 		channel = channel.asInteger;
 		note = note.asInteger;
@@ -96,6 +106,13 @@ PTVoiceAllocator {
 			voice.proxy.setn(\g, 0);
 			active.removeAt(note);
 			inactive.addFirst(voice);
+		};
+	}
+
+	noteBend { |note, freq, bendSt|
+		if (active.includesKey(note)) {
+			var voice = active[note];
+			voice.proxy.setn(\freq, freq);
 		};
 	}
 
