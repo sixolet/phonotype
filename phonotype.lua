@@ -375,6 +375,8 @@ function process_midi(data)
   if d.type == "note_on" then
     -- global
     note = d.note
+    print("ON", d.ch, d.note)
+    engine.note_on(d.ch, d.note, music.note_num_to_freq(d.note), d.vel/127)
     engine.set_param(21, d.vel / 127)
     engine.set_param(19, music.note_num_to_freq(d.note))
     if retrigger then
@@ -382,8 +384,12 @@ function process_midi(data)
     end
     
     engine.set_param(20, 1) -- gate on
-  elseif d.type == "note_off" and d.note == note then
-    engine.set_param(20, 0) -- gate off
+  elseif d.type == "note_off" then
+    print("OFF", d.ch, d.note)
+    engine.note_off(d.ch, d.note, music.note_num_to_freq(d.note))
+    if  d.note == note then
+      engine.set_param(20, 0) -- gate off
+    end
   elseif d.type == "pitchbend" then
     local bend_st = (util.round(d.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
     set_pitch_bend(bend_st * params:get("bend_range"))

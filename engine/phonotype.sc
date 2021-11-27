@@ -335,6 +335,34 @@ PTParser {
 		^(end -> newNode);
 	}
 
+	parseMidi { |preTokens, tokens, ctx|
+		var end, newNode, channel, results, midi;
+		PTDbg << "Parsing channel " << preTokens << "\n";
+		channel = this.parseHelper(preTokens, 1, ctx);
+		PTDbg << "Parsed channel\n";
+		results = List.newFrom([channel.value]);
+		midi = ctx[preTokens[0].asSymbol];
+		if (channel.key < preTokens.size, {
+			PTParseError.new("Expected :, found " ++ preTokens[channel.key]).throw;
+		});
+		PTDbg << "Parsed pre\n";
+		midi.poly.do { |i|
+			var elt;
+			var subctx = (
+				I: PTConst.new("I", i),
+				G: PTArgOp.new("G", \g, \control, 0, 1, channels: 1),
+				F: PTArgOp.new("F", \freq, \control, 20, 20000, channels: 1, initValue: 20),
+				V: PTArgOp.new("V", \velocity, \control, 0, 1, channels: 1, initValue: 1),
+			);
+			subctx.parent = ctx;
+			elt = this.parseHelper(tokens, 0, subctx);
+			end = elt.key;
+			results.add(elt.value);
+		};
+		newNode = PTNode.new(midi, results, ctx['callSite']);
+		^(end -> newNode);
+	}
+
 	parse { |str, context=nil|
 		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
@@ -358,6 +386,10 @@ PTParser {
 				var strumStr = preTokens[0];
 				var poly = strumStr.split($.)[1].asInt;
 				a = this.parseStrum(poly, preTokens, tokens, ctx);
+				end = a.key;
+			}
+			{preTokens[0].beginsWith("MIDI") && ctx.includesKey(preTokens[0].asSymbol)} {
+				a = this.parseMidi(preTokens, tokens, ctx);
 				end = a.key;
 			}
 			{true} {
@@ -1509,6 +1541,9 @@ PT {
 	}
 
 	initPoly { |ctx|
+		ctx['MIDI.2'] = PTMidiOp.new("MIDI.4", server, 3);
+		ctx['MIDI.4'] = PTMidiOp.new("MIDI.4", server, 5);
+		ctx['MIDI.6'] = PTMidiOp.new("MIDI.6", server, 7);
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
 

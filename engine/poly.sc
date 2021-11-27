@@ -1,5 +1,166 @@
 // This file contains code for Phonotype's polyphony support, such as it is.
 
+PTVoiceAllocator {
+	var <id, <channel, <voices, <active, <inactive;
+
+	classvar <registry;
+
+	*initClass {
+        registry = IdentityDictionary.new;
+    }
+
+	*new { |channel, nVoices, proxyFactory|
+		var vs = List.new;
+		var ret;
+		channel = channel.asInteger;
+		nVoices.do { |i|
+			var proxy = proxyFactory.value;
+			vs.add( (proxy: proxy, index: i, note: nil, freq: nil, velocity: nil) );
+		};
+		ret = super.newCopyArgs(PT.randId, channel, vs, Dictionary.new, List.newFrom(vs));
+		if (registry.includesKey(channel).not) {
+			registry[channel] = (Dictionary.new);
+		};
+		registry[channel][ret.id] = ret;
+		^ret;
+	}
+
+	*deliverNoteOn { |channel, note, freq, velocity|
+		channel = channel.asInteger;
+		note = note.asInteger;
+		if (registry.includesKey(channel)) {
+			registry[channel].do { |a|
+				a.noteOn(note, freq, velocity);
+			};
+		};
+	}
+
+	*deliverNoteOff { |channel, note, freq|
+		channel = channel.asInteger;
+		note = note.asInteger;
+		if (registry.includesKey(channel)) {
+			registry[channel].do { |a|
+				a.noteOff(note);
+			};
+		};
+	}
+
+	free {
+		registry[channel].removeAt(id);
+		if (registry[channel].size == 0) {
+			registry.removeAt(channel);
+		};
+		voices.do { |v|
+			v.proxy.clear;
+		};
+	}
+
+	allocVoice { |note, freq|
+		var ret;
+		if (inactive.size <= 1) {
+			var best = 0;
+			var bestFreqDif = 100000;
+			active.do { |v|
+				var freqDif = (v.freq - freq).abs;
+				if (freqDif < bestFreqDif) {
+					best = v.note;
+				}
+			};
+			this.noteOff(best);
+		};
+		ret = inactive.pop();
+		ret.note = note;
+		ret.freq = freq;
+		active[note] = ret;
+		^ret;
+	}
+
+	noteOn { |note, freq, velocity|
+		if (active.includesKey(note)) {
+			var voice = active[note];
+			voice.freq = freq;
+			voice.velocity = velocity;
+			voice.proxy.setn(\freq, freq, \velocity, velocity);
+		} {
+			var voice = this.allocVoice(note, freq);
+			voice.freq = freq;
+			voice.velocity = velocity;
+			voice.note = note;
+			voice.proxy.setn(\freq, freq, \velocity, velocity, \g, 1);
+		};
+	}
+
+	noteOff { |note|
+		if (active.includesKey(note)) {
+			var voice = active[note];
+			voice.proxy.setn(\g, 0);
+			active.removeAt(note);
+			inactive.addFirst(voice);
+		};
+	}
+
+}
+
+PTMidiOp : PTOp {
+	var server, <poly;
+
+	*new { |name, server, poly|
+		^super.newCopyArgs(name, poly+1, server, poly);
+	}
+
+	min { |args|
+		^args[1..].collect(_.min).sum;
+	}
+
+	max { |args|
+		^args[1..].collect(_.max).sum;
+	}
+
+	check { |args|
+		if (args[0].isConstant.not) {
+			PTCheckError.new("MIDI channel must be constant.").throw;
+		}
+	}
+
+	rate { |args|
+		^\audio;
+	}
+
+	set { |key, value, args, resources|
+		var voiceAllocator = resources[0].value;
+		super.set(key, value, args, resources);
+		voiceAllocator.voices.do { |v|
+			v.proxy.set(key, value);
+		};
+	}
+
+	alloc { |args, callSite|
+		// VoiceAllocator
+		^[nil, (site: callSite, free: {})];
+	}
+
+	commit { |args, resources, group|
+		var callSite = resources[1].site;
+		var allocator = PTVoiceAllocator.new(args[0].min, poly, {
+			var proxy =  callSite.net.newProxy(rate: \audio, fadeTime: 0, quant: 0);
+			var prevProxy = callSite.net.prevEntryOf(callSite.id).proxy;
+			proxy.set(\in, prevProxy);
+			proxy;
+		});
+		args[1..].do { |a, i|
+			a.commit(group);
+			allocator.voices[i].proxy.set(\index, i);
+			allocator.voices[i].proxy.source = { a.instantiate };
+		};
+		resources[0] = allocator;
+	}
+
+	instantiate { |args, resources|
+		var allocator = resources[0];
+		^Mix.ar(allocator.voices.collect { |v| v.proxy.ar(2) });
+	}
+}
+
 PTPolyArgCaptureOp : PTOp {
 	var orgIdx, minVal, maxVal, index;
 

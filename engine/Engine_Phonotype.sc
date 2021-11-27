@@ -93,6 +93,14 @@ Engine_Phonotype : CroneEngine {
 			pt.loadBuffer(msg[1].asInt, msg[2].asInt, msg[3].asString);
 		});
 
+		this.addCommand("note_on", "iiff", { arg msg;
+			PTVoiceAllocator.deliverNoteOn(msg[1].asInt, msg[2].asInt, msg[3].asFloat, msg[4].asFloat);
+		});
+
+		this.addCommand("note_off", "iif", { arg msg;
+			PTVoiceAllocator.deliverNoteOff(msg[1].asInt, msg[2].asInt, msg[3].asFloat);
+		});
+
 		this.addCommand("quant", "iiii", { arg msg;
 			var prevQuant = pt.getQuant(msg[2].asInt, msg[3].asInt);
 			var prevQuantIndex = if(prevQuant < 1, {((-1 / prevQuant) + 2).round}, {prevQuant.round});

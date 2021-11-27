@@ -583,10 +583,10 @@ PTModOp : PTOp {
 
 
 PTArgOp : PTOp {
-	var symbol, r, minVal, maxVal;
+	var symbol, r, minVal, maxVal, channels, initValue;
 
-	*new { |name, symbol, rate, minVal = -10, maxVal = 10|
-		^super.newCopyArgs(name, 0, symbol, rate, minVal, maxVal);
+	*new { |name, symbol, rate, minVal = -10, maxVal = 10, channels = 2, initValue = 0|
+		^super.newCopyArgs(name, 0, symbol, rate, minVal, maxVal, channels, initValue);
 	}
 
 	rate { |args, resources|
@@ -608,13 +608,13 @@ PTArgOp : PTOp {
 	instantiate { |args, resources|
 		^case
 		{this.rate == \audio} {
-			symbol.ar([0,0])
+			symbol.ar(initValue!channels)
 		}
 		{this.rate == \control} {
-			symbol.kr([0,0])
+			symbol.kr(initValue!channels)
 		}
 		{true} {
-			symbol.kr([0,0])
+			symbol.kr(initValue!channels)
 		}
 	}
 }
