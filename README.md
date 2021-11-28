@@ -4,7 +4,7 @@ It is like Teletype but for sound.
 
 Useful for:
 
-* Custom midi (mono, for now) synths
+* Custom midi synths
 * Effects chains of your dreams
 * Fluid live-coding, changing the control flow as you go
 * An entire dang modular in this box yo
