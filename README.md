@@ -293,6 +293,31 @@ For example, this is a LFO-modulated drone of the first six partials of a low A:
 L.MIX 1 6: * UNI RRAMP I / SIN * 110 I I
 ```
 
+`MIDI.1 <channel>: <statement>` - Not quite monophonic MIDI
+
+`MIDI.2 <channel>: <statement>` - 2 note polyphony
+
+`MIDI.4 <channel>: <statement>` - 4 note polyphony
+
+`MIDI.6 <channel>: <statement>` - 6 note polyphony
+
+`MIDI.8 <channel>: <statement>` - 8 note polyphony
+
+Within `<statement>`, you can use `F`, `G`, and `V` to refer to the frequency,
+gate, and velocity of the particular voice, and you can find the voice number (0
+through number of voices) as `I`, in case you want to make each voice distinct
+in your poly synth.
+
+PHONOTYPE will actually initialize one additional voice to allow one note to
+decay as it is being replaced. We use a voice-stealing allocator, and the voice
+we recycle is whichever is *nearest in frequency* to the newly allocated note.
+
+For supercollider nerds: I wrote some code to pause the group when a voice isn't
+in use. I hope it works to decrease the baseline CPU of this thing and early
+experimental evidence is that it does somewhat on my laptop, though of course if
+you're playing every voice it'll use all that CPU. The cost is that detecting
+the silence to pause the voice itself isn't free.
+
 ### Filters
 
 `LPF <signal> <freq>` - Low pass filter

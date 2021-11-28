@@ -1541,9 +1541,11 @@ PT {
 	}
 
 	initPoly { |ctx|
-		ctx['MIDI.2'] = PTMidiOp.new("MIDI.4", server, 3);
+		ctx['MIDI.1'] = PTMidiOp.new("MIDI.2", server, 2);
+		ctx['MIDI.2'] = PTMidiOp.new("MIDI.2", server, 3);
 		ctx['MIDI.4'] = PTMidiOp.new("MIDI.4", server, 5);
 		ctx['MIDI.6'] = PTMidiOp.new("MIDI.6", server, 7);
+		ctx['MIDI.8'] = PTMidiOp.new("MIDI.6", server, 9);
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
 
