@@ -1,7 +1,7 @@
 // This file contains code for Phonotype's polyphony support, such as it is.
 
 PTVoiceAllocator {
-	var <id, <channel, <voices, <active, <inactive;
+	var <id, <server, <channel, <voices, <active, <inactive;
 
 	classvar <registry;
 
@@ -9,15 +9,25 @@ PTVoiceAllocator {
         registry = IdentityDictionary.new;
     }
 
-	*new { |channel, nVoices, proxyFactory|
+	*new { |server, channel, nVoices, proxyFactory|
 		var vs = List.new;
 		var ret;
 		channel = channel.asInteger;
 		nVoices.do { |i|
 			var proxy = proxyFactory.value;
-			vs.add( (proxy: proxy, index: i, note: nil, freq: nil, velocity: nil) );
+			vs.add( (
+				proxy: proxy,
+				index: i,
+				note: nil,
+				freq: nil,
+				velocity: nil,
+				gateBus: Bus.control(numChannels: 1),
+				freqBus: Bus.control(numChannels: 1),
+				velocityBus: Bus.control(numChannels: 1),
+				silent: true) );
+			vs[i].freqBus.set(20); // Necessary to avoid a click on first use for some waveforms.
 		};
-		ret = super.newCopyArgs(PT.randId, channel, vs, Dictionary.new, List.newFrom(vs));
+		ret = super.newCopyArgs(PT.randId, server, channel, vs, Dictionary.new, List.newFrom(vs));
 		if (registry.includesKey(channel).not) {
 			registry[channel] = (Dictionary.new);
 		};
@@ -62,6 +72,9 @@ PTVoiceAllocator {
 		};
 		voices.do { |v|
 			v.proxy.clear;
+			v.gateBus.free;
+			v.freqBus.free;
+			v.velocityBus.free;
 		};
 	}
 
@@ -82,28 +95,43 @@ PTVoiceAllocator {
 		ret.note = note;
 		ret.freq = freq;
 		active[note] = ret;
+		ret.silent = false;
 		^ret;
 	}
 
+	silent { |index|
+		var vox = voices[index];
+		vox.silent = true;
+		if (active.includesKey(vox.note).not) {
+			vox.proxy.parentGroup.run(false);
+		}
+	}
+
 	noteOn { |note, freq, velocity|
+		var voice, msgs;
 		if (active.includesKey(note)) {
-			var voice = active[note];
-			voice.freq = freq;
-			voice.velocity = velocity;
-			voice.proxy.setn(\freq, freq, \velocity, velocity);
+			voice = active[note];
 		} {
-			var voice = this.allocVoice(note, freq);
-			voice.freq = freq;
-			voice.velocity = velocity;
-			voice.note = note;
-			voice.proxy.setn(\freq, freq, \velocity, velocity, \g, 1);
+			voice = this.allocVoice(note, freq);
 		};
+		voice.freq = freq;
+		voice.velocity = velocity;
+		voice.note = note;
+		voice.proxy.parentGroup.run(true);
+		msgs = List.new;
+		msgs.add(voice.freqBus.setMsg(freq));
+		msgs.add(voice.velocityBus.setMsg(velocity));
+		msgs.add(voice.gateBus.setMsg(1));
+		server.listSendBundle(nil, msgs);
 	}
 
 	noteOff { |note|
 		if (active.includesKey(note)) {
 			var voice = active[note];
-			voice.proxy.setn(\g, 0);
+			voice.gateBus.set(0);
+			if (voice.silent) {
+				voice.proxy.parentGroup.run(false);
+			};
 			active.removeAt(note);
 			inactive.addFirst(voice);
 		};
@@ -112,7 +140,7 @@ PTVoiceAllocator {
 	noteBend { |note, freq, bendSt|
 		if (active.includesKey(note)) {
 			var voice = active[note];
-			voice.proxy.setn(\freq, freq);
+			voice.freqBus.set(freq);
 		};
 	}
 
@@ -153,28 +181,51 @@ PTMidiOp : PTOp {
 
 	alloc { |args, callSite|
 		// VoiceAllocator
-		^[nil, (site: callSite, free: {})];
+		^[nil, (site: callSite, free: {}), PTListFreer.new, nil];
 	}
 
-	commit { |args, resources, group|
+	commit { |args, resources, group, dynCtx|
 		var callSite = resources[1].site;
-		var allocator = PTVoiceAllocator.new(args[0].min, poly, {
+		var parentGroups = List.new;
+		var allocator = PTVoiceAllocator.new(server, args[0].min, poly, {
 			var proxy =  callSite.net.newProxy(rate: \audio, fadeTime: 0, quant: 0);
+			var newGroup = Group.new(group);
 			var prevProxy = callSite.net.prevEntryOf(callSite.id).proxy;
+			NodeWatcher.register(newGroup, assumePlaying: true);
+			proxy.parentGroup = newGroup;
+			parentGroups.add(proxy.parentGroup);
 			proxy.set(\in, prevProxy);
 			proxy;
 		});
 		args[1..].do { |a, i|
-			a.commit(group);
-			allocator.voices[i].proxy.set(\index, i);
-			allocator.voices[i].proxy.source = { a.instantiate };
+			var vox = allocator.voices[i];
+			var newCtx = (
+				gate: vox.gateBus,
+				freq: vox.freqBus,
+				velocity: vox.velocityBus,
+			);
+			newCtx.parent = dynCtx;
+			a.commit(vox.proxy.parentGroup, newCtx);
+			vox.proxy.source = { a.instantiate };
 		};
 		resources[0] = allocator;
+		resources[2] = parentGroups;
+		resources[3] = OSCdef.new(allocator.id, { |msg|
+			var i = msg[2];
+			PTDbg << "Allowing pause " << i << "\n";
+			allocator.silent(i);
+		}, ("/" ++ allocator.id).asSymbol);
 	}
 
 	instantiate { |args, resources|
 		var allocator = resources[0];
-		^Mix.ar(allocator.voices.collect { |v| v.proxy.ar(2) });
+		var voiceUgens = List.new;
+		allocator.voices.do { |voice, i|
+			var voiceUgen = voice.proxy.ar(2);
+			voiceUgens.add(voiceUgen);
+			SendReply.kr(A2K.kr(DetectSilence.ar(Impulse.ar(0) + Mix.ar(voiceUgen.abs), doneAction: Done.none)), ("/" ++ allocator.id).asSymbol, [], i);
+		};
+		^Mix.ar(voiceUgens);
 	}
 }
 

@@ -83,9 +83,9 @@ PTOp {
 	}
 
 	// commit runs as part of a Routine; it can yield.
-	commit { |args, resources, group|
+	commit { |args, resources, group, dynCtx|
 		args.do { |a|
-			a.commit(group);
+			a.commit(group, dynCtx);
 		}
 	}
 
@@ -134,8 +134,8 @@ PTNode {
 		^op.max(args, resources);
 	}
 
-	commit { |group|
-		op.commit(args, resources, group);
+	commit { |group, dynCtx|
+		op.commit(args, resources, group, dynCtx);
 	}
 
 	set { |key, value|
@@ -350,9 +350,9 @@ PTParser {
 			var elt;
 			var subctx = (
 				I: PTConst.new("I", i),
-				G: PTArgOp.new("G", \g, \control, 0, 1, channels: 1),
-				F: PTArgOp.new("F", \freq, \control, 20, 20000, channels: 1, initValue: 20),
-				V: PTArgOp.new("V", \velocity, \control, 0, 1, channels: 1, initValue: 1),
+				G: PTDynBusOp.new("G", \control, \gate, 0, 1),
+				F: PTDynBusOp.new("F", \control, \freq, 20, 20000),
+				V: PTDynBusOp.new("V", \control, \velocity, 0, 1),
 			);
 			subctx.parent = ctx;
 			elt = this.parseHelper(tokens, 0, subctx);
@@ -927,7 +927,7 @@ PTScriptNet {
 				PTDbg.complex;
 				if (entry.newNode != nil, {
 					PTDbg << "Committing new node " << entry.newNode << "\n";
-					entry.newNode.commit;
+					entry.newNode.commit(parentGroup, dynCtx: ());
 					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
 					timeToFree = max(timeToFree, entry.timeToFree);
@@ -1037,11 +1037,11 @@ PTScriptOp : PTOp {
 		^[net];
 	}
 
-	commit { |args, resources, group|
+	commit { |args, resources, group, dynCtx|
 		var net = resources[0];
-		PTDbg << "Committing args " << args << "\n";
+		PTDbg << "Committing args " << args << " context " << dynCtx.size << "\n";
 		args.do { |a|
-			a.commit(group);
+			a.commit(group, dynCtx);
 		};
 		PTDbg << "Committing net from op " << net.id << "\n";
 		net.commit(group).do { |w| w.yield };

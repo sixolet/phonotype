@@ -36,6 +36,40 @@ PTBusOp : PTOp {
 	}
 }
 
+PTDynBusOp : PTOp {
+	var rate, symbol, min, max;
+
+	*new { |name, rate, symbol, min, max|
+		^super.newCopyArgs(name, 0, rate, symbol, min, max);
+	}
+
+	min { |args, resources|
+		^min;
+	}
+
+	max { |args, resources|
+		^max;
+	}
+
+	alloc {
+		^[nil];
+	}
+
+	commit { |args, resources, group, dynCtx|
+		PTDbg << "Storing away dynamic bus num for " << symbol << " " << dynCtx[symbol] << "\n";
+		resources[0] = dynCtx[symbol];
+	}
+
+	instantiate { |args, resources|
+		^if (rate == \audio) {
+			In.ar(resources[0], 1);
+		} {
+			In.kr(resources[0], 1);
+		}
+	}
+
+}
+
 PTBusSendOp : PTOp {
 
 	var rate, busses;
