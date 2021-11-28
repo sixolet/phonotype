@@ -1,4 +1,7 @@
 -- PHONOTYPE
+-- v0.2 @sixolet
+-- https://llllllll.co/t/phonotype-code-a-sound/49564
+-- 
 -- phonotype exists between 
 -- keyboard and speaker
 --
@@ -351,6 +354,7 @@ function init()
   params:set_action("retrigger", function (x) retrigger = x end)
   params:add_number("bend_range", "bend range", 1, 48, 2)
   
+  params:read(1)
   params:bang()
   sync_routine = clock.run(sync_every_beat)
 end
@@ -363,7 +367,14 @@ end
 
 music = require 'musicutil'
 
-function set_pitch_bend(bend_st)
+active_notes = {}
+
+function set_pitch_bend(channel, bend_st)
+  for n, val in pairs(active_notes) do
+    if val then
+      engine.note_bend(channel, n, music.note_num_to_freq(n + bend_st), bend_st)
+    end
+  end
   if note ~= nil then
     engine.set_param(19, music.note_num_to_freq(note + bend_st))
   end
@@ -375,7 +386,7 @@ function process_midi(data)
   if d.type == "note_on" then
     -- global
     note = d.note
-    print("ON", d.ch, d.note)
+    active_notes[d.note] = true
     engine.note_on(d.ch, d.note, music.note_num_to_freq(d.note), d.vel/127)
     engine.set_param(21, d.vel / 127)
     engine.set_param(19, music.note_num_to_freq(d.note))
@@ -385,14 +396,14 @@ function process_midi(data)
     
     engine.set_param(20, 1) -- gate on
   elseif d.type == "note_off" then
-    print("OFF", d.ch, d.note)
+    active_notes[d.note] = false
     engine.note_off(d.ch, d.note, music.note_num_to_freq(d.note))
     if  d.note == note then
       engine.set_param(20, 0) -- gate off
     end
   elseif d.type == "pitchbend" then
     local bend_st = (util.round(d.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
-    set_pitch_bend(bend_st * params:get("bend_range"))
+    set_pitch_bend(d.ch, bend_st * params:get("bend_range"))
   end
 end
 
