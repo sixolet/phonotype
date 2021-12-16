@@ -186,7 +186,6 @@ PTParser {
 			"IN" -> PTInOp.new(),
 			"PI" -> PTConst.new("PI", pi),
 			"SIN" -> PTOscOp.new("SIN", 1, SinOsc, SinOsc),
-			"CROW" -> PTCrowOut.new("CROW", 1),
 			"PSIN" -> PTOscOpPhase("PSIN", 2, SinOsc, SinOsc),
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw, VarSaw),
 			"VSAW" -> PTOscOpWidth.new("VSAW", 2, VarSaw, VarSaw),
@@ -1566,10 +1565,12 @@ PT {
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
 
-	// initCrow { |ctx|
-		// TODO: this doesn't do anything
-		//ctx['CROW.OUT.1'] = PTCrowOutOp.new("CROW.OUT.1", 440) // what other args?
-	// }
+	 initCrow { |ctx|
+		ctx['CROW.OUT.1'] = PTCrowOut.new("CROW.OUT.1", 1);
+		ctx['CROW.OUT.2'] = PTCrowOut.new("CROW.OUT.2", 2);
+		ctx['CROW.OUT.3'] = PTCrowOut.new("CROW.OUT.3", 3);
+		ctx['CROW.OUT.4'] = PTCrowOut.new("CROW.OUT.4", 4);
+	 }
 
 	init {
 		this.reset;
@@ -1577,7 +1578,7 @@ PT {
 		this.initBusses(ctx);
 		this.initBeats(ctx);
 		this.initPoly(ctx);
-		// this.initCrow(ctx);
+		this.initCrow(ctx);
 
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
