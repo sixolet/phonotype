@@ -83,9 +83,9 @@ PTOp {
 	}
 
 	// commit runs as part of a Routine; it can yield.
-	commit { |args, resources, group|
+	commit { |args, resources, group, dynCtx|
 		args.do { |a|
-			a.commit(group);
+			a.commit(group, dynCtx);
 		}
 	}
 
@@ -134,8 +134,8 @@ PTNode {
 		^op.max(args, resources);
 	}
 
-	commit { |group|
-		op.commit(args, resources, group);
+	commit { |group, dynCtx|
+		op.commit(args, resources, group, dynCtx);
 	}
 
 	set { |key, value|
@@ -186,6 +186,7 @@ PTParser {
 			"IN" -> PTInOp.new(),
 			"PI" -> PTConst.new("PI", pi),
 			"SIN" -> PTOscOp.new("SIN", 1, SinOsc, SinOsc),
+			"CROW" -> PTCrowOut.new("CROW", 1),
 			"PSIN" -> PTOscOpPhase("PSIN", 2, SinOsc, SinOsc),
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw, VarSaw),
 			"VSAW" -> PTOscOpWidth.new("VSAW", 2, VarSaw, VarSaw),
@@ -350,9 +351,9 @@ PTParser {
 			var elt;
 			var subctx = (
 				I: PTConst.new("I", i),
-				G: PTArgOp.new("G", \g, \control, 0, 1, channels: 1),
-				F: PTArgOp.new("F", \freq, \control, 20, 20000, channels: 1, initValue: 20),
-				V: PTArgOp.new("V", \velocity, \control, 0, 1, channels: 1, initValue: 1),
+				G: PTDynBusOp.new("G", \control, \gate, 0, 1),
+				F: PTDynBusOp.new("F", \control, \freq, 20, 20000),
+				V: PTDynBusOp.new("V", \control, \velocity, 0, 1),
 			);
 			subctx.parent = ctx;
 			elt = this.parseHelper(tokens, 0, subctx);
@@ -360,6 +361,18 @@ PTParser {
 			results.add(elt.value);
 		};
 		newNode = PTNode.new(midi, results, ctx['callSite']);
+		^(end -> newNode);
+	}
+
+	parseCrow { |preTokens, tokens, ctx|
+		var end, newNode, channel, results, freq, crow;
+		PTDbg << "Parsing crow " << preTokens << "\n";
+		freq = this.parseHelper(preTokens, 1, ctx);
+		PTDbg << freq;
+		crow = ctx[preTokens[0].asSymbol];
+
+		// TODO: PTNode?
+		newNode = PTNode.new(crow, results, ctx['callSite']);
 		^(end -> newNode);
 	}
 
@@ -390,6 +403,10 @@ PTParser {
 			}
 			{preTokens[0].beginsWith("MIDI") && ctx.includesKey(preTokens[0].asSymbol)} {
 				a = this.parseMidi(preTokens, tokens, ctx);
+				end = a.key;
+			}
+			{preTokens[0].beginsWith("CROW") && ctx.includesKey(preTokens[0].asSymbol)} {
+				a = this.parseCrow(preTokens, tokens, ctx);
 				end = a.key;
 			}
 			{true} {
@@ -927,7 +944,7 @@ PTScriptNet {
 				PTDbg.complex;
 				if (entry.newNode != nil, {
 					PTDbg << "Committing new node " << entry.newNode << "\n";
-					entry.newNode.commit;
+					entry.newNode.commit(parentGroup, dynCtx: ());
 					PTDbg << "Scheduling for free " << entry.node << " because we have " << entry.newNode << "\n";
 					freeNodes.add(entry.node);
 					timeToFree = max(timeToFree, entry.timeToFree);
@@ -1037,11 +1054,11 @@ PTScriptOp : PTOp {
 		^[net];
 	}
 
-	commit { |args, resources, group|
+	commit { |args, resources, group, dynCtx|
 		var net = resources[0];
-		PTDbg << "Committing args " << args << "\n";
+		PTDbg << "Committing args " << args << " context " << dynCtx.size << "\n";
 		args.do { |a|
-			a.commit(group);
+			a.commit(group, dynCtx);
 		};
 		PTDbg << "Committing net from op " << net.id << "\n";
 		net.commit(group).do { |w| w.yield };
@@ -1541,11 +1558,18 @@ PT {
 	}
 
 	initPoly { |ctx|
-		ctx['MIDI.2'] = PTMidiOp.new("MIDI.4", server, 3);
+		ctx['MIDI.1'] = PTMidiOp.new("MIDI.2", server, 2);
+		ctx['MIDI.2'] = PTMidiOp.new("MIDI.2", server, 3);
 		ctx['MIDI.4'] = PTMidiOp.new("MIDI.4", server, 5);
 		ctx['MIDI.6'] = PTMidiOp.new("MIDI.6", server, 7);
+		ctx['MIDI.8'] = PTMidiOp.new("MIDI.6", server, 9);
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
+
+	// initCrow { |ctx|
+		// TODO: this doesn't do anything
+		//ctx['CROW.OUT.1'] = PTCrowOutOp.new("CROW.OUT.1", 440) // what other args?
+	// }
 
 	init {
 		this.reset;
@@ -1553,6 +1577,8 @@ PT {
 		this.initBusses(ctx);
 		this.initBeats(ctx);
 		this.initPoly(ctx);
+		// this.initCrow(ctx);
+
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
@@ -1577,6 +1603,7 @@ PT {
 		scripts.add(description);
 		main = PTScriptNet.new(server: server, parser: parser, lines: [],
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
+
 	}
 
 	loadBuffer { |i, size, filepath|
@@ -1645,7 +1672,7 @@ PT {
 			};
 			stream << "\n";
 		}
-    }
+	}
 
 	setFadeTime { |script, index, time|
 		scripts[script].setFadeTime(index, time);
