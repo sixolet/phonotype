@@ -230,28 +230,24 @@ PTMidiOp : PTOp {
 }
 
 PTCrowOut : PTOp {
-	var output, frequency;
 
-	*new { |name, output|
-		^super.newCopyArgs(name, 1, output);
+	*new {
+	    ^super.newCopyArgs("CROW", 2);
 	}
 
 	rate { |args, resources|
-		^\audio;
-	}
-
-	min { |args, resources|
-		^0;
-	}
-
-	max { |args, resources|
-		^4;
+		^\control;
 	}
 
 	instantiate { |args, resources|
 	    var iargs = PTOp.instantiateAll(args);
-	    var v = iargs[0];
-	    ^SendReply.ar(Impulse.ar(0), "/crow/out", values: [output, 0.01, v]);
+	    // n is crow output #
+	    var n = iargs[0];
+	    // v is voltage v
+	    var v = iargs[1];
+	    // s is slew ... hardcoded for now
+	    var s = 0.01;
+	    ^SendReply.kr(Impulse.kr(0), "/crow/out", values: [n, s, v]);
 	}
 }
 

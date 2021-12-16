@@ -238,6 +238,8 @@ PTParser {
 			"LEAP" -> PTLeapOp.new,
 			"COUNT" -> PTCountOp.new,
 
+			"CROW.V" -> PTCrowOut.new,
+
 			"CDIV" -> PTFilterOp.new("CDIV", 2, PulseDivider),
 			"DUR" -> PT01DelegatedOp("DUR", 2, Trig1),
 			"PROB" -> PT01DelegatedOp("PROB", 2, CoinGate),
@@ -365,9 +367,6 @@ PTParser {
 
 	parseCrow { |preTokens, tokens, ctx|
 		var end, newNode, channel, results, freq, crow;
-		PTDbg << "Parsing crow " << preTokens << "\n";
-		freq = this.parseHelper(preTokens, 1, ctx);
-		PTDbg << freq;
 		crow = ctx[preTokens[0].asSymbol];
 
 		// TODO: PTNode?
@@ -1565,20 +1564,12 @@ PT {
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
 
-	 initCrow { |ctx|
-		ctx['CROW.OUT.1'] = PTCrowOut.new("CROW.OUT.1", 1);
-		ctx['CROW.OUT.2'] = PTCrowOut.new("CROW.OUT.2", 2);
-		ctx['CROW.OUT.3'] = PTCrowOut.new("CROW.OUT.3", 3);
-		ctx['CROW.OUT.4'] = PTCrowOut.new("CROW.OUT.4", 4);
-	 }
-
 	init {
 		this.reset;
 		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
 		this.initPoly(ctx);
-		this.initCrow(ctx);
 
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
