@@ -365,15 +365,6 @@ PTParser {
 		^(end -> newNode);
 	}
 
-	parseCrow { |preTokens, tokens, ctx|
-		var end, newNode, channel, results, freq, crow;
-		crow = ctx[preTokens[0].asSymbol];
-
-		// TODO: PTNode?
-		newNode = PTNode.new(crow, results, ctx['callSite']);
-		^(end -> newNode);
-	}
-
 	parse { |str, context=nil|
 		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
@@ -401,10 +392,6 @@ PTParser {
 			}
 			{preTokens[0].beginsWith("MIDI") && ctx.includesKey(preTokens[0].asSymbol)} {
 				a = this.parseMidi(preTokens, tokens, ctx);
-				end = a.key;
-			}
-			{preTokens[0].beginsWith("CROW") && ctx.includesKey(preTokens[0].asSymbol)} {
-				a = this.parseCrow(preTokens, tokens, ctx);
 				end = a.key;
 			}
 			{true} {
