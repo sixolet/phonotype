@@ -231,7 +231,7 @@ PTMidiOp : PTOp {
 
 PTCrowOut : PTOp {
 	//
-	var server, index, frequency;
+	var server, index, frequency, iargs, v;
 
 	*new { |name, server|
 		^super.newCopyArgs("CROW", 1, server);
@@ -251,11 +251,12 @@ PTCrowOut : PTOp {
 
 	instantiate { |args, resources|
 	    // should SendReply happen here?
-	    PTDbg << "crow out args, resources\n";
-	    PTDbg << args;
-	    PTDbg << resources;
-
-	    ^SendReply.kr(Impulse.kr(0), "/crow/out", values: [1, 2, 3]);
+	    //PTDbg << "crow out args, resources\n";
+	    //PTDbg << args;
+	    //PTDbg << resources;
+	    var iargs = PTOp.instantiateAll(args);
+	    var v = iargs[0];
+	    ^SendReply.kr(Impulse.kr(0), "/crow/out", values: [1, 0.01, v]);
 	}
 	// TODO: do we need a commit method?
 
