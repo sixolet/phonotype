@@ -186,6 +186,7 @@ PTParser {
 			"IN" -> PTInOp.new(),
 			"PI" -> PTConst.new("PI", pi),
 			"SIN" -> PTOscOp.new("SIN", 1, SinOsc, SinOsc),
+			"CROW" -> PTCrowOut.new("CROW", 1),
 			"PSIN" -> PTOscOpPhase("PSIN", 2, SinOsc, SinOsc),
 			"TRI" -> PTOscOp.new("TRI", 1, VarSaw, VarSaw),
 			"VSAW" -> PTOscOpWidth.new("VSAW", 2, VarSaw, VarSaw),
@@ -363,6 +364,18 @@ PTParser {
 		^(end -> newNode);
 	}
 
+	parseCrow { |preTokens, tokens, ctx|
+		var end, newNode, channel, results, freq, crow;
+		PTDbg << "Parsing crow " << preTokens << "\n";
+		freq = this.parseHelper(preTokens, 1, ctx);
+		PTDbg << freq;
+		crow = ctx[preTokens[0].asSymbol];
+
+		// TODO: PTNode?
+		newNode = PTNode.new(crow, results, ctx['callSite']);
+		^(end -> newNode);
+	}
+
 	parse { |str, context=nil|
 		var ctx = context ? (callSite: nil);
 		var s = if ( (str == nil) || (str == ""), {"IT"}, {str});
@@ -390,6 +403,10 @@ PTParser {
 			}
 			{preTokens[0].beginsWith("MIDI") && ctx.includesKey(preTokens[0].asSymbol)} {
 				a = this.parseMidi(preTokens, tokens, ctx);
+				end = a.key;
+			}
+			{preTokens[0].beginsWith("CROW") && ctx.includesKey(preTokens[0].asSymbol)} {
+				a = this.parseCrow(preTokens, tokens, ctx);
 				end = a.key;
 			}
 			{true} {
@@ -1549,12 +1566,19 @@ PT {
 		ctx['STRUM.4'] = PTStrumOp.new(server, 4);
 	}
 
+	// initCrow { |ctx|
+		// TODO: this doesn't do anything
+		//ctx['CROW.OUT.1'] = PTCrowOutOp.new("CROW.OUT.1", 440) // what other args?
+	// }
+
 	init {
 		this.reset;
 		ctx = ();
 		this.initBusses(ctx);
 		this.initBeats(ctx);
 		this.initPoly(ctx);
+		// this.initCrow(ctx);
+
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
@@ -1579,6 +1603,7 @@ PT {
 		scripts.add(description);
 		main = PTScriptNet.new(server: server, parser: parser, lines: [],
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
+
 	}
 
 	loadBuffer { |i, size, filepath|
@@ -1647,7 +1672,7 @@ PT {
 			};
 			stream << "\n";
 		}
-    }
+	}
 
 	setFadeTime { |script, index, time|
 		scripts[script].setFadeTime(index, time);

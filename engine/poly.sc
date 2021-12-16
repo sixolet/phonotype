@@ -229,6 +229,39 @@ PTMidiOp : PTOp {
 	}
 }
 
+PTCrowOut : PTOp {
+	//
+	var server, index, frequency;
+
+	*new { |name, server|
+		^super.newCopyArgs("CROW", 1, server);
+	}
+
+	rate { |args, resources|
+		^\audio;
+	}
+
+	min { |args, resources|
+		^0;
+	}
+
+	max { |args, resources|
+		^1;
+	}
+
+	instantiate { |args, resources|
+	    // should SendReply happen here?
+	    PTDbg << "crow out args, resources\n";
+	    PTDbg << args;
+	    PTDbg << resources;
+
+	    ^SendReply.kr(Impulse.kr(0), "/crow/out", values: [1, 2, 3]);
+	}
+	// TODO: do we need a commit method?
+
+}
+
+
 PTPolyArgCaptureOp : PTOp {
 	var orgIdx, minVal, maxVal, index;
 

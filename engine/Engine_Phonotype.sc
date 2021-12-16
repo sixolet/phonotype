@@ -32,6 +32,17 @@ Engine_Phonotype : CroneEngine {
 			};
 
 		};
+
+		// does this auto wire things together? where should the OSCdef live?
+		OSCdef(\scCrowOut, { |msg|
+			PTDbg << "calling oscdef crow out:";
+			PTDbg << msg;
+			 luaOscAddr.sendMsg("/crow/out", msg[3].asFloat, msg[4].asFloat, msg[5].asFloat);
+			 //luaOscAddr.sendMsg("/crow/out", msg[0], msg[1], msg[3].asFloat, msg[4].asFloat, msg[5].asFloat]);
+			//luaOscAddr.sendMsg("/crow/out", msg[0]);
+		},"/crow/out");
+
+
 		//  :/
 		pt = PT.new(context.server);
 		pt.load("", {
@@ -103,6 +114,13 @@ Engine_Phonotype : CroneEngine {
 
 		this.addCommand("note_bend", "iiff", { arg msg;
 			PTVoiceAllocator.deliverNoteBend(msg[1].asInt, msg[2].asInt, msg[3].asFloat, msg[4].asFloat);
+		});
+
+		this.addCommand("crow_out", "iff", { arg msg;
+			// msg: [output, slew, volts]
+			//luaOscAddr.sendMsg("/crow/out", msg[1].asInt, msg[2].asFloat, msg[3].asFloat);
+			// How to notify the sc server to call the \scCrowOut OSCdef?
+			SendReply.kr(\scCrowOut, "/crow/out", [msg[1].asInt, msg[2].asFloat, msg[3].asFloat]);
 		});
 
 		this.addCommand("quant", "iiii", { arg msg;

@@ -1,8 +1,13 @@
 -- PHONOTYPE
 -- v0.2 @sixolet
 -- https://llllllll.co/t/phonotype-code-a-sound/49564
+<<<<<<< HEAD
 -- 
 -- phonotype exists between 
+=======
+--
+-- phonotype exists between
+>>>>>>> crow-osc
 -- keyboard and speaker
 --
 -- Plug a computer keyboard
@@ -16,24 +21,24 @@
 -- In scene description Alt+Enter saves
 -- Choose scene from params menu to load
 -- Shift+Alt+Esc loads a fresh scene
--- 
+--
 -- Mini tutorial
--- Try 
--- SIN 440 
--- in M. 
--- 
+-- Try
+-- SIN 440
+-- in M.
+--
 -- Then on the next
--- line put 
+-- line put
 -- * IT PERC QN .5
 -- (QN = quarter notes.
 --  .5 is our env decay)
--- 
+--
 -- Now add
 -- + IT * .5 DEL.F IT * .75 M 3
 -- DEL.F is a delay w/ feedback
 -- we delay by a dotted eigth
 -- with a 3s decay.
--- 
+--
 -- Then go back
 -- to the first line.
 -- Hit ctrl-enter to get
@@ -115,7 +120,7 @@ function BasicModel:as_string(script)
   if self.scripts[script] == nil then
     return ""
   end
-  
+
   return table.concat(self.scripts[script], "\n")
 end
 
@@ -230,7 +235,7 @@ function PTModel:enter() -- moved here so we can use it when pasting, cutting, e
   elseif editing == "" then
     model:remove(editing_script, edit_row)
     moved_line = true
-    -- Anticipates that the "next" row will become this one, but 
+    -- Anticipates that the "next" row will become this one, but
     -- we should stay highlighting this
     editing = model:get(editing_script, edit_row+1)
     model:to_line(edit_row)
@@ -303,7 +308,7 @@ function init()
       param_spec)
     params:set_action(param_id, function(x) engine.set_param(i, x) end)
   end
-  
+
   params:add_group("buffers", 48)
   local buf_size_spec = controlspec.def{
     min=64,
@@ -337,23 +342,27 @@ function init()
       _menu.rebuild_params()
     end)
   end
-  
+
   midi_device = {} -- container for connected midi devices
   midi_device_names = {}
   target = 1
 
   for i = 1,#midi.vports do -- query all ports
     midi_device[i] = midi.connect(i) -- connect each device
-    local full_name = 
+    local full_name =
     table.insert(midi_device_names,"port "..i..": "..util.trim_string_to_width(midi_device[i].name,40)) -- register its name
   end
-  
+
   params:add_option("midi target", "midi target",midi_device_names,1)
   params:set_action("midi target", midi_target)
   params:add_binary("retrigger", "retrigger","toggle", 1)
   params:set_action("retrigger", function (x) retrigger = x end)
   params:add_number("bend_range", "bend range", 1, 48, 2)
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> crow-osc
   params:read(1)
   params:bang()
   sync_routine = clock.run(sync_every_beat)
@@ -393,7 +402,7 @@ function process_midi(data)
     if retrigger then
       engine.set_param(20, 0)
     end
-    
+
     engine.set_param(20, 1) -- gate on
   elseif d.type == "note_off" then
     active_notes[d.note] = false
@@ -646,13 +655,13 @@ function osc_in(path, args, from)
     end
 
     model.scripts[script_num] = split_lines(script_contents)
-    
+
     -- If we just loaded a shorter script...
     if edit_row > model:script_size(editing_script) + 1 then
       edit_row = model:script_size(editing_script) + 1
       edit_col = 1
     end
-    
+
     redraw()
   elseif path == "/save" then
     local text = args[1]
@@ -670,6 +679,17 @@ function osc_in(path, args, from)
     params:set("scene", full_filename)
     print("Wrote", full_filename)
     err_line = filename
+  elseif path == "/crow/out" then
+    local output = args[1]
+    local slew = args[2]
+    local volts = args[3]
+    -- if crow_is_connected then
+    print("crow output", output, slew, volts)
+    crow.output[output].slew = slew
+    crow.output[output].volts = volts
+    -- end
+  else
+      print(path)
   end
 end
 
