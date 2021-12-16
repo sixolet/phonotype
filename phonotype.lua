@@ -1,13 +1,8 @@
 -- PHONOTYPE
 -- v0.2 @sixolet
 -- https://llllllll.co/t/phonotype-code-a-sound/49564
-<<<<<<< HEAD
--- 
--- phonotype exists between 
-=======
 --
 -- phonotype exists between
->>>>>>> crow-osc
 -- keyboard and speaker
 --
 -- Plug a computer keyboard
@@ -358,11 +353,6 @@ function init()
   params:add_binary("retrigger", "retrigger","toggle", 1)
   params:set_action("retrigger", function (x) retrigger = x end)
   params:add_number("bend_range", "bend range", 1, 48, 2)
-<<<<<<< HEAD
-  
-=======
-
->>>>>>> crow-osc
   params:read(1)
   params:bang()
   sync_routine = clock.run(sync_every_beat)
