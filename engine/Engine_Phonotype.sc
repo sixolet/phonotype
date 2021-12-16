@@ -33,7 +33,6 @@ Engine_Phonotype : CroneEngine {
 
 		};
 
-		// does this auto wire things together? where should the OSCdef live?
 		var crowOSCOut = OSCdef(\scCrowOut, { |msg|
 			luaOscAddr.sendMsg("/crow/out", msg[3].asInt, msg[4].asFloat, msg[5].asFloat);
 		},"/crow/out");
