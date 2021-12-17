@@ -602,7 +602,7 @@ PTScriptNet {
 			I1: PTArgOp("I1", \i1, args[0].rate, args[0].min, args[0].max),
 			I2: PTArgOp("I2", \i2, args[1].rate, args[1].min, args[1].max),
 			I3: PTArgOp("I3", \i3, args[2].rate, args[2].min, args[2].max),
-			I4: PTArgOp("I4", \i1, args[3].rate, args[3].min, args[3].max),
+			I4: PTArgOp("I4", \i4, args[3].rate, args[3].min, args[3].max),
 			IT: PTArgOp("IT", \in, r),
 			'IT.F': PTArgOp("IT.F", \in, r, 20, 20000),
 			'IT.U': PTArgOp("IT.F", \in, r, 0, 1),
