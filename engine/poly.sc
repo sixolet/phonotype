@@ -248,7 +248,9 @@ PTCrowOut : PTOp {
 	    var v = iargs[2];
 	    // s is slew ... hardcoded for now
 	    var s = 0.01;
-	    ^SendReply.kr(t, "/crow/out", values: [n, s, v]);
+
+	    SendReply.kr(t, "/crow/out", values: [n, s, v]);
+	    ^Latch.kr(v, n);
 	}
 }
 
