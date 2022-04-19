@@ -241,13 +241,14 @@ PTCrowOut : PTOp {
 
 	instantiate { |args, resources|
 	    var iargs = PTOp.instantiateAll(args);
+	    var t = iargs[0];
 	    // n is crow output #
-	    var n = iargs[0];
+	    var n = iargs[1];
 	    // v is voltage v
-	    var v = iargs[1];
+	    var v = iargs[2];
 	    // s is slew ... hardcoded for now
 	    var s = 0.01;
-	    ^SendReply.kr(Impulse.kr(0), "/crow/out", values: [n, s, v]);
+	    ^SendReply.kr(t, "/crow/out", values: [n, s, v]);
 	}
 }
 
