@@ -670,13 +670,13 @@ function osc_in(path, args, from)
     print("Wrote", full_filename)
     err_line = filename
   elseif path == "/crow/out" then
-    local output = args[1]
+    local crow_output = args[1]
     local slew = args[2]
     local volts = args[3]
     -- if crow_is_connected then
-    print("crow output", output, slew, volts)
-    crow.output[output].slew = slew
-    crow.output[output].volts = volts
+    print("crow output", crow_output, slew, volts)
+    crow.output[crow_output].slew = slew
+    crow.output[crow_output].volts = volts
     -- end
   else
       print(path)

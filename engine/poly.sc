@@ -232,7 +232,7 @@ PTMidiOp : PTOp {
 PTCrowOut : PTOp {
 
 	*new {
-	    ^super.newCopyArgs("CROW", 2);
+	    ^super.newCopyArgs("CROW", 3);
 	}
 
 	rate { |args, resources|
@@ -249,8 +249,9 @@ PTCrowOut : PTOp {
 	    // s is slew ... hardcoded for now
 	    var s = 0.01;
 
-	    SendReply.kr(t, "/crow/out", values: [n, s, v]);
-	    ^Latch.kr(v, n);
+	    ^SendReply.kr(t, "/crow/out", values: [n, s, v]);
+	    // FIXME: does this need to latch?
+	    //^Latch.kr(args[2], args[1]);
 	}
 }
 
