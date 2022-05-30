@@ -436,7 +436,7 @@ the measure. So far we're only supporting 4/4 time, but within that you can use:
 * `HN` - Trigger on every half note
 * `WN` - Trigger on every whole note
 * `SNT`, `ENT`, `QNT`, and so on - sixteenth note triplets, eighth note triplets, etc.
-* `BT1` - Trigger on every beat-1 of a measure. `B2` triggers on every beat-2, etc.
+* `BT1` - Trigger on every beat-1 of a measure. `BT2` triggers on every beat-2, etc.
 * `BT1.E` - Trigger on the second sixteenth note of beat-1 of every measure. Also
   `BT2.E`, `BT1.&`, `BT4.A`, and every combination like that.
 
