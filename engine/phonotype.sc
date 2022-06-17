@@ -238,6 +238,8 @@ PTParser {
 			"LEAP" -> PTLeapOp.new,
 			"COUNT" -> PTCountOp.new,
 
+			"CROW.V" -> PTCrowOut.new,
+
 			"CDIV" -> PTFilterOp.new("CDIV", 2, PulseDivider),
 			"DUR" -> PT01DelegatedOp("DUR", 2, Trig1),
 			"PROB" -> PT01DelegatedOp("PROB", 2, CoinGate),
@@ -1555,6 +1557,7 @@ PT {
 		this.initBusses(ctx);
 		this.initBeats(ctx);
 		this.initPoly(ctx);
+
 		ctx['PAUSE'] = PTPauseOp.new(server);
 		if (out_proxy == nil, {
 			out_proxy = NodeProxy.new(server, \audio, 2);
@@ -1579,6 +1582,7 @@ PT {
 		scripts.add(description);
 		main = PTScriptNet.new(server: server, parser: parser, lines: [],
 			args: [PTNode.new(PTInOp.new, [], nil)], script: scripts[numScripts-1]);
+
 	}
 
 	loadBuffer { |i, size, filepath|
@@ -1647,7 +1651,7 @@ PT {
 			};
 			stream << "\n";
 		}
-    }
+	}
 
 	setFadeTime { |script, index, time|
 		scripts[script].setFadeTime(index, time);

@@ -229,6 +229,33 @@ PTMidiOp : PTOp {
 	}
 }
 
+PTCrowOut : PTOp {
+
+	*new {
+	    ^super.newCopyArgs("CROW", 3);
+	}
+
+	rate { |args, resources|
+		^\control;
+	}
+
+	instantiate { |args, resources|
+	    var iargs = PTOp.instantiateAll(args);
+	    var t = iargs[0];
+	    // n is crow output #
+	    var n = iargs[1];
+	    // v is voltage v
+	    var v = iargs[2];
+	    // s is slew ... hardcoded for now
+	    var s = 0.01;
+
+	    ^SendReply.kr(t, "/crow/out", values: [n, s, v]);
+	    // FIXME: does this need to latch?
+	    //^Latch.kr(args[2], args[1]);
+	}
+}
+
+
 PTPolyArgCaptureOp : PTOp {
 	var orgIdx, minVal, maxVal, index;
 

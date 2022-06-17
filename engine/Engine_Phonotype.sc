@@ -32,6 +32,11 @@ Engine_Phonotype : CroneEngine {
 			};
 
 		};
+
+		var crowOSCOut = OSCdef(\scCrowOut, { |msg|
+			luaOscAddr.sendMsg("/crow/out", msg[3].asInt, msg[4].asFloat, msg[5].asFloat);
+		},"/crow/out");
+
 		//  :/
 		pt = PT.new(context.server);
 		pt.load("", {
