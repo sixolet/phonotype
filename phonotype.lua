@@ -36,7 +36,7 @@
 -- 
 -- Then go back
 -- to the first line.
--- Hit ctrl-enter to get
+-- Hit shift-enter to get
 -- A new line above
 -- Make it say
 -- S+H SCL SIN .1 0 7 QN
