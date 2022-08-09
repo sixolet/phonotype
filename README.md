@@ -74,7 +74,7 @@ decay)
 Now add `+ IT * .5 DEL.F IT * .75 M 3`. `DEL.F` is a delay w/ feedback. We delay
 by a dotted eigth with a 3s decay.
 
-Then go back to the first line.  Hit ctrl-enter to get a new line above. Make it
+Then go back to the first line.  Hit shift-enter to get a new line above. Make it
 say `S+H SCL SIN .1 0 7 QN` and change `SIN 440` to say `SIN N.MIN IT`.
 
 
